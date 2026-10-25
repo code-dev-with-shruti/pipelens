@@ -1,0 +1,46 @@
+{
+  "procedures": {
+    "load_invoices": {
+      "reads": ["staging.raw_invoices"],
+      "writes": ["dbo.clean_invoices", "dbo.audit_log", "dbo.error_log"],
+      "calls": ["dbo.clean_invoice_records"],
+      "uncertain": false
+    },
+    "clean_invoice_records": {
+      "reads": ["dbo.clean_invoices", "dbo.payment_imports", "dbo.payments"],
+      "writes": ["dbo.payments"],
+      "calls": ["dbo.reconcile_payments"],
+      "uncertain": false
+    },
+    "reconcile_payments": {
+      "reads": ["dbo.clean_invoices", "dbo.payment_matches"],
+      "writes": ["dbo.payments", "dbo.reconciled"],
+      "calls": ["dbo.build_monthly_report"],
+      "uncertain": false
+    },
+    "build_monthly_report": {
+      "reads": ["dbo.payments", "dbo.reconciled"],
+      "writes": ["dbo.monthly_report"],
+      "calls": [],
+      "uncertain": false
+    },
+    "nightly_cleanup": {
+      "reads": ["dbo.cleanup_policy"],
+      "writes": ["dbo.audit_log", "dbo.expired_sessions"],
+      "calls": [],
+      "uncertain": false
+    },
+    "dynamic_rate_refresh": {
+      "reads": ["dbo.rate_sources"],
+      "writes": [],
+      "calls": [],
+      "uncertain": true
+    },
+    "archive_monthly_reports": {
+      "reads": ["dbo.monthly_report"],
+      "writes": ["dbo.report_archive"],
+      "calls": [],
+      "uncertain": false
+    }
+  }
+}
