@@ -77,7 +77,7 @@ The app surfaces obvious risk patterns in the SQL flow.
 
 Each risk should show a severity and a description tied to the relevant procedure.
 
-The LLM is used only to write summaries, ordered steps, and risk explanations. It never decides graph edges or downstream impact; those are derived from the parser and graph traversal.
+Gemini writes only the plain-English summary and ordered steps from parser-derived relationships. Risk detection is deterministic code; the model never decides risks, graph edges, or downstream impact.
 
 ### Export onboarding doc
 
@@ -121,10 +121,10 @@ The proof of concept must do all of the following:
 - Let the user click a procedure or table and see downstream impact.
 - Provide a plain-English summary, steps, and risk list for that procedure.
 - Flag uncertain edges explicitly.
-- Compare the parsed graph against a planted ground truth and report found vs. missed dependencies and false edges.
+- Compare parsed dependencies against a planted ground truth and show the result in a compact accuracy badge with precision/recall details.
 - Export a Markdown onboarding document that includes the pipeline overview, each procedure’s summary, steps, reads/writes, risks and downstream impact.
 - Demonstrate the full loop in under a minute as the submission proof.
-- Keep the LLM limited to writing summaries, steps, and risk explanations; never allowing it to decide graph edges or downstream impact.
+- Keep Gemini limited to writing summaries and ordered steps from parsed data; never let it decide risks, graph edges, or downstream impact.
 
 ## Deferred From the POC
 

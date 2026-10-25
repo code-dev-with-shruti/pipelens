@@ -9,9 +9,9 @@ status: approved
 
 PipeLens has two main jobs: first, it reads a small set of SQL files and builds a graph of how procedures and tables connect; second, it lets a user click a procedure or table and see everything that depends on it. The graph is created by a parser, not by free-form model guessing. That makes the dependency map trustworthy.
 
-The backend takes uploaded SQL or the built-in sample project, extracts reads and writes, builds a directed graph, and computes downstream impact using graph traversal. The frontend displays the graph and a side panel with a plain-English summary, the ordered steps, and any risks. The model is only used to explain what the code already found: summaries, steps, and risk explanations. It never decides the graph edges or the downstream impact. Risk detection is deterministic in code; the LLM explains the staged result rather than setting the data model.
+The backend takes uploaded SQL or the built-in sample project, extracts reads and writes, builds a directed graph, and computes downstream impact using graph traversal. The frontend displays the graph and a side panel with a plain-English summary, ordered steps, and deterministic risks. Gemini receives parsed procedure relationships only and writes summaries and steps; it never decides graph edges, risks, or downstream impact.
 
-The sample project also ships with a cached JSON of the LLM output so the demo never depends on a live API call. This keeps the proof-of-concept stable and reproducible.
+The sample project uses `samples/retail_billing/llm_cache.json` so normal sample analysis never depends on a live API call. Generate or refresh this cache once with `.\.venv\Scripts\python.exe -m backend.generate_sample_cache`; uploaded-file analysis calls Gemini live.
 
 This shape keeps the project small and credible for a hackathon: the app proves the core idea without needing a live database, user accounts, or production infrastructure.
 
@@ -34,8 +34,8 @@ PRD ref: `prd.md > The Core Journey`.
 1. Backend parsing and graph spike: prove sqlglot can extract reads and writes from the sample T-SQL, including the `CREATE PROCEDURE` wrapper, temp tables, `TRY/CATCH`, and dynamic SQL. This is the first task before any UI work.
 2. Backend graph traversal and downstream impact logic.
 3. Frontend graph canvas with click-to-highlight behavior.
-4. Detail panel and risk display.
-5. Accuracy test against a planted ground truth.
+4. Readable selected-subgraph view, Gemini summaries/steps, and deterministic risk display.
+5. Accuracy check against planted ground truth with a UI badge.
 6. Export and final polish.
 
 ## Stack
@@ -45,7 +45,7 @@ PRD ref: `prd.md > The Core Journey`.
 - SQL parsing: sqlglot with T-SQL support
 - Graph engine: NetworkX
 - Graph layout: @dagrejs/dagre for layout and routing of the node graph
-- LLM integration: Anthropic SDK with a configurable model via environment variables
+- LLM integration: Google GenAI SDK with a configurable Gemini model ID via environment variables
 - Validation: Pydantic
 - Frontend: React + Vite + Tailwind CSS
 - Graph UI: React Flow
@@ -73,25 +73,29 @@ Environment requirements:
 - Python 3.11+
 - Node.js 18+
 - Git
-- Anthropic API key in a local environment file
+- Google AI Studio API key in a local environment file
 
-Startup steps (PowerShell):
-
-Backend:
-```powershell
-cd backend
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-Copy-Item ..\.env.example .env
-uvicorn main:app --reload --port 8000
+Create `.env` at the repository root, alongside `backend/` and `frontend/`, with the private API key and a Gemini model ID (not a URL):
+```dotenv
+GEMINI_API_KEY=your-key-goes-here
+MODEL=gemini-3.5-flash-lite
 ```
 
-Frontend:
+Keep `.env` local; `.gitignore` excludes it. Install backend requirements and generate the sample explanation cache once:
 ```powershell
-cd frontend
-npm install
-npm run dev
+.\.venv\Scripts\python.exe -m pip install -r backend\requirements.txt
+.\.venv\Scripts\python.exe -m backend.generate_sample_cache
+```
+
+Start the backend from the repository root:
+```powershell
+.\.venv\Scripts\python.exe -m uvicorn backend.main:app --reload --host 127.0.0.1 --port 8000
+```
+
+Start the frontend in a second PowerShell terminal:
+```powershell
+Set-Location .\frontend
+npm run dev -- --host 127.0.0.1
 ```
 
 Enable CORS in the Vite dev server so the frontend can talk to the local backend at `http://localhost:8000` during development.
@@ -127,7 +131,7 @@ PRD ref: `prd.md > Procedure detail panel` and `prd.md > Downstream impact view`
 
 ### Risk List
 What it does: displays severity-tagged risk items tied to the selected procedure.
-Risk detection is performed by deterministic code rules (missing error handling, unfiltered deletes, hard-coded values, dynamic SQL, and similar patterns). The LLM is used only to explain the detected risks in plain language.
+Risk detection is performed by deterministic code rules for missing TRY/CATCH, unfiltered DELETE, hard-coded values, and dynamic SQL. Each risk includes a severity, title, and deterministic explanation; Gemini does not decide or explain risk findings.
 PRD ref: `prd.md > Risk detection`.
 
 ### Export Action
@@ -193,15 +197,15 @@ project/
 ├── .env.example
 ├── backend/
 │   ├── main.py                 # FastAPI routes and request handling
-│   ├── pipeline.py             # analysis orchestration and graph build
-│   ├── sql_parser.py           # sqlglot extraction + LLM fallback for uncertain edges
+│   ├── analysis.py             # deterministic risks and ground-truth comparison
+│   ├── explanations.py         # Gemini summary/step generation and cache validation
+│   ├── generate_sample_cache.py
 │   ├── graph.py                # graph traversal for downstream impact
-│   ├── prompts.py              # prompt templates for summary/steps/risk generation
-│   ├── schemas.py              # Pydantic models for validation
+│   ├── parser.py               # deterministic SQL relationship extraction
 │   ├── requirements.txt
 │   └── tests/
 │       ├── test_api.py
-│       └── test_accuracy.py
+│       └── test_analysis.py
 ├── frontend/
 │   ├── package.json
 │   ├── vite.config.js
@@ -230,12 +234,12 @@ project/
 
 ## External Services and Dependencies
 
-- Anthropic API
-  - Purpose: generate summary, ordered steps, and risk explanations for a parsed procedure.
-  - Required configuration: API key and model selection via environment variables.
-  - Document link: use the provider’s current API docs for the selected model.
-  - Failure mode: if the model fails or returns invalid JSON, the app should surface a clear error and keep the parser-derived graph intact.
-  - Demo behavior: the sample project uses a cached JSON output file so the local demo does not depend on a live API call.
+- Gemini API
+  - Purpose: generate a procedure summary and ordered steps from parsed relationships.
+  - Required configuration: `GEMINI_API_KEY` and a Gemini model ID in `MODEL`, both in the ignored repository-root `.env` file.
+  - Document link: https://ai.google.dev/gemini-api/docs
+  - Failure mode: if the model fails or returns invalid JSON, the app surfaces a clear guide error and keeps the parser-derived graph and deterministic risks intact.
+  - Demo behavior: sample analysis reads `samples/retail_billing/llm_cache.json`; only uploaded-file analysis calls Gemini live.
 
 - sqlglot
   - Purpose: parse T-SQL and extract reads and writes.
@@ -253,7 +257,7 @@ project/
 
 - Invalid or unsupported SQL input → show a readable error and keep the UI stable.
 - API failure during analysis → show a user-friendly message and preserve the current state.
-- LLM output schema mismatch → retry once with validation feedback, then fail clearly without corrupting the graph.
+- LLM output schema mismatch → show a readable guide error without corrupting the graph or risk findings.
 - Dynamic SQL or unsupported SQL features → show a dashed or flagged uncertain edge instead of pretending the dependency is certain.
 
 ## What Was Simplified and Why
@@ -267,8 +271,8 @@ project/
 
 Decisions made here:
 - The app will use parser-first dependency mapping and compute downstream impact via graph traversal.
-- Risk detection will be deterministic in code and the LLM will only explain detected risks.
-- The LLM will only write summaries, steps, and risk explanations; it will never decide graph edges or downstream impact.
+- Risk detection will be deterministic in code; Gemini will only write summaries and ordered steps from parsed data.
+- Gemini will never decide graph edges, risk findings, or downstream impact.
 - The app will use `@dagrejs/dagre` for graph layout to keep the network readable on the sample pipeline.
 - The demo flow will be a local sample-project walkthrough, with uploads also supported.
 - The one-minute demo is the submission proof; no extra walkthrough screen will be created.
@@ -276,7 +280,7 @@ Decisions made here:
 - The sample project includes cached LLM output so the demo never depends on the live API.
 
 Learner uncertainty discussed and clarified:
-- The key technical question was whether the model should be allowed to influence graph structure. We resolved that by limiting the LLM to explanatory text only and keeping graph logic in code.
+- The key technical question was whether the model should be allowed to influence graph structure. We resolved that by limiting Gemini to summaries and steps and keeping graph and risk logic in code.
 - No unresolved technical ambiguity remains before build begins.
 
 No additional open blockers remain before the code phase.

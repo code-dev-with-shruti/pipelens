@@ -42,7 +42,8 @@ def downstream_by_node(graph: nx.DiGraph) -> dict[str, list[str]]:
     downstream: dict[str, list[str]] = {}
     for node in sorted(graph.nodes):
         reachable = nx.descendants(graph, node)
-        downstream[node] = sorted(_public_node_id(graph, reachable_node) for reachable_node in reachable)
+        public_id = _public_node_id(graph, node)
+        downstream[public_id] = sorted(_public_node_id(graph, reachable_node) for reachable_node in reachable)
     return downstream
 
 

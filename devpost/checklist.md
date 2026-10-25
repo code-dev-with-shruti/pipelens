@@ -1,6 +1,6 @@
 ---
 doc: checklist
-status: draft
+status: approved
 ---
 
 # Build Checklist
@@ -9,7 +9,7 @@ Build mode: learn
 
 ## Slices
 
-- [ ] **1. SQL parsing spike proves reads/writes extraction**
+- [x] **1. SQL parsing spike proves reads/writes extraction**
   Becomes usable: A parser can read the sample T-SQL and output procedure/table reads and writes, including wrapper logic and uncertain dynamic SQL handling.
   Why now: This is the critical risk and kernel proof; the graph and UI rely on it.
   PRD ref: `prd.md > The Core Journey`, `prd.md > What We're Building`
@@ -19,7 +19,7 @@ Build mode: learn
   Learner check: Open the sample SQL and confirm the parser sees the same procedure/table relationships the app is meant to expose.
   Commit: `Add SQL parser spike`
 
-- [ ] **2. Backend graph and downstream impact**
+- [x] **2. Backend graph and downstream impact**
   Becomes usable: The backend can process the sample project and return graph data with downstream impact.
   Why now: The graph is the foundation for the proof of value.
   PRD ref: `prd.md > Downstream impact view`
@@ -29,34 +29,34 @@ Build mode: learn
   Learner check: Load the sample project and confirm the backend returns procedures, tables, and edges.
   Commit: `Build backend graph API`
 
-- [ ] **3. Frontend graph with click-to-highlight**
-  Becomes usable: The graph renders and highlights downstream impact on click.
+- [x] **3. Frontend graph with click-to-highlight**
+  Becomes usable: The sample pipeline appears as an interactive left-to-right graph, and selecting any procedure, table, or uncertain dependency highlights its downstream impact in the graph and side panel.
   Why now: The graph is the user-facing proof of the product idea.
   PRD ref: `prd.md > The Core Journey`, `prd.md > Downstream impact view`
   Spec ref: `spec.md > Components`, `spec.md > Stack`
-  Build: Add the React Flow graph, DAG layout, and click-to-highlight state.
-  Verify (mechanical): Start the Vite app and confirm the graph renders without runtime errors and the selected procedure updates the highlight state.
-  Learner check: Click a procedure and confirm the downstream nodes light up as expected.
+  Build: Load the sample project from the backend, render procedure/table nodes and read/write edges with uncertain edges dashed, add the downstream side panel and legend, support responsive layouts, and enable Vite-to-backend CORS. This graph was reviewed and the learner confirmed downstream highlighting works.
+  Verify (mechanical): Run the frontend production build and backend tests; start both servers and confirm the sample graph loads, node selection updates downstream highlighting, and uncertain edges remain visibly dashed.
+  Learner check: Open the app on desktop and a narrow mobile screen, click a procedure and a table, and confirm the affected objects and downstream list are clear and usable.
   Commit: `Render interactive graph UI`
 
 - [ ] **4. Detail panel and risk display**
-  Becomes usable: The selected procedure shows the summary, steps, reads/writes, and risk list.
+  Becomes usable: The selected procedure shows reads/writes, a plain-English summary and ordered steps, and deterministic severity-tagged risks; the graph frames downstream impact clearly.
   Why now: This converts a raw graph into an actionable explanation.
   PRD ref: `prd.md > Procedure detail panel`, `prd.md > Risk detection`
   Spec ref: `spec.md > Components`, `spec.md > Data Model`
-  Build: Add the detail panel and deterministic risk detection rules.
-  Verify (mechanical): Confirm the selected procedure includes the expected summary, risk severities, and read/write list.
-  Learner check: Click a procedure and verify the side panel feels clear and trustworthy.
+  Build: Improve graph readability with larger labels, compact Dagre spacing, accent-colored impact edges and selection framing. Add deterministic rules for missing TRY/CATCH, unfiltered DELETE, hard-coded values, and dynamic SQL. Generate summaries and ordered steps from parsed data with Gemini for uploads; use the local sample cache for the built-in project.
+  Verify (mechanical): Run the backend tests and frontend build; confirm sample analysis reads cached explanations without calling Gemini and uploads request Gemini summaries; inspect risk severities and detail fields.
+  Learner check: Click a procedure and verify its downstream graph view, reads/writes, summary, steps, and risk descriptions are clear.
   Commit: `Add detail panel and risk rules`
 
 - [ ] **5. Accuracy test**
-  Becomes usable: The project reports found vs. missed dependencies and false edges against the planted ground truth.
+  Becomes usable: The sample view shows a compact precision/recall-derived accuracy badge against the planted ground truth.
   Why now: This is the credibility check that sets PipeLens apart from a generic SQL chat.
   PRD ref: `prd.md > What We're Building`
   Spec ref: `spec.md > Build Order`, `spec.md > Data Model`
-  Build: Compare the parsed graph to `ground_truth.json` and output a precision/recall summary.
-  Verify (mechanical): Run the accuracy test and inspect the counts.
-  Learner check: Review the reported counts and confirm the app is honest about what it found.
+  Build: Compare parsed reads, writes, procedure calls, and uncertain relationships to `ground_truth.json`; show an F1 badge with precision/recall details.
+  Verify (mechanical): Run the accuracy test and confirm the badge values and missing/extra relationship lists match the computed result.
+  Learner check: Review the accuracy badge and its explanation against the sample project.
   Commit: `Add accuracy check`
 
 - [ ] **6. Export and polish**
@@ -71,7 +71,7 @@ Build mode: learn
 
 ## Hands-on Checkpoints
 
-- [ ] Early usable behavior explored — sample SQL parser and graph output reviewed
+- [x] Early usable behavior explored — sample SQL parser and graph output reviewed
 - [ ] Final kick-the-tires exploration and feedback completed
 
 ## Final Review
@@ -92,3 +92,4 @@ Activity mode: [fill in after build]
 
 ## Revisions
 
+- The learner confirmed the initial graph and downstream behavior, closing slice 3. Slice 4 now includes the specifically requested readability refinement and Gemini/deterministic-risk detail behavior; slice 5 displays its ground-truth result in the UI.

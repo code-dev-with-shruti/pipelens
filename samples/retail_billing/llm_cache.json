@@ -1,0 +1,57 @@
+{
+  "model": "gemini-3.8-flash",
+  "procedures": {
+    "dbo.archive_monthly_reports": {
+      "summary": "Archives monthly reports by reading from dbo.monthly_report and writing to dbo.report_archive.",
+      "steps": [
+        "Read data from dbo.monthly_report.",
+        "Write data to dbo.report_archive."
+      ]
+    },
+    "dbo.build_monthly_report": {
+      "summary": "Generates a monthly report by reading payments and reconciliation data and writing to dbo.monthly_report.",
+      "steps": [
+        "Read from dbo.payments and dbo.reconciled.",
+        "Write to dbo.monthly_report."
+      ]
+    },
+    "dbo.clean_invoice_records": {
+      "summary": "Cleans invoice records, updates payments, and invokes payment reconciliation.",
+      "steps": [
+        "Read from dbo.clean_invoices, dbo.payment_imports, and dbo.payments.",
+        "Write updates to dbo.payments.",
+        "Call procedure dbo.reconcile_payments."
+      ]
+    },
+    "dbo.dynamic_rate_refresh": {
+      "summary": "Executes dynamic SQL to refresh rates based on dbo.rate_sources.",
+      "steps": [
+        "Read from dbo.rate_sources.",
+        "Execute dynamic SQL."
+      ]
+    },
+    "dbo.load_invoices": {
+      "summary": "Loads invoices from staging into clean invoice tables, logs errors and audits, and triggers cleaning.",
+      "steps": [
+        "Read from staging.raw_invoices.",
+        "Write to dbo.audit_log, dbo.clean_invoices, and dbo.error_log.",
+        "Call procedure dbo.clean_invoice_records."
+      ]
+    },
+    "dbo.nightly_cleanup": {
+      "summary": "Performs nightly cleanup based on cleanup policies, writing to expired sessions and audit logs.",
+      "steps": [
+        "Read from dbo.cleanup_policy.",
+        "Write to dbo.audit_log and dbo.expired_sessions."
+      ]
+    },
+    "dbo.reconcile_payments": {
+      "summary": "Reconciles payments against invoices and payment matches, writes to reconciled and payments tables, and initiates the monthly report build.",
+      "steps": [
+        "Read from dbo.clean_invoices and dbo.payment_matches.",
+        "Write to dbo.payments and dbo.reconciled.",
+        "Call procedure dbo.build_monthly_report."
+      ]
+    }
+  }
+}
