@@ -39,7 +39,7 @@ Build mode: learn
   Learner check: Open the app on desktop and a narrow mobile screen, click a procedure and a table, and confirm the affected objects and downstream list are clear and usable.
   Commit: `Render interactive graph UI`
 
-- [ ] **4. Detail panel and risk display**
+- [x] **4. Detail panel and risk display**
   Becomes usable: The selected procedure shows reads/writes, a plain-English summary and ordered steps, and deterministic severity-tagged risks; the graph frames downstream impact clearly.
   Why now: This converts a raw graph into an actionable explanation.
   PRD ref: `prd.md > Procedure detail panel`, `prd.md > Risk detection`
@@ -49,7 +49,7 @@ Build mode: learn
   Learner check: Click a procedure and verify its downstream graph view, reads/writes, summary, steps, and risk descriptions are clear.
   Commit: `Add detail panel and risk rules`
 
-- [ ] **5. Accuracy test**
+- [x] **5. Accuracy test**
   Becomes usable: The sample view shows a compact precision/recall-derived accuracy badge against the planted ground truth.
   Why now: This is the credibility check that sets PipeLens apart from a generic SQL chat.
   PRD ref: `prd.md > What We're Building`
@@ -59,7 +59,7 @@ Build mode: learn
   Learner check: Review the accuracy badge and its explanation against the sample project.
   Commit: `Add accuracy check`
 
-- [ ] **6. Manage uploaded SQL files**
+- [x] **6. Manage uploaded SQL files**
   Becomes usable: A user can add SQL files to the sample or current working set, remove a file from the analysis, and restore the sample without changing files on disk.
   Why now: The pipeline explorer needs a practical way to analyze another user's SQL, and file changes must be reflected in the graph and risks.
   PRD ref: `prd.md > Load and inspect a pipeline`, `prd.md > Loading and error states`
@@ -69,7 +69,7 @@ Build mode: learn
   Learner check: Upload a related SQL procedure and confirm its connections appear; remove it and confirm the graph returns to the remaining set; reset to sample and confirm the seven bundled files return.
   Commit: `Manage uploaded SQL working set`
 
-- [ ] **7. Export and polish**
+- [x] **7. Export and polish**
   Becomes usable: The user can export a Markdown onboarding document and the app feels demo-ready.
   Why now: The export and polish make the single-minute demo story strong.
   PRD ref: `prd.md > Export onboarding doc`, `prd.md > Loading and error states`
@@ -82,23 +82,23 @@ Build mode: learn
 ## Hands-on Checkpoints
 
 - [x] Early usable behavior explored — sample SQL parser and graph output reviewed
-- [ ] Final kick-the-tires exploration and feedback completed
+- [x] Final kick-the-tires exploration and feedback completed — learner tested the app and reported everything works as expected.
 
 ## Final Review
 
-- [ ] Final review complete — feedback resolved and learner confirms ready to ship
+- [x] Final review complete — backend tests passed (23); frontend production build passed; learner confirmed the proof of concept is ready to ship.
 
 ## Code Tour and App Map
 
-- [ ] Learning activity complete — guided route, focused alternative, or prior practice connected
-- [ ] Optional edit and transfer reflection addressed — offered/declined/already covered/not applicable as appropriate
-- [ ] `devpost/app-map.html` generated from finished code, checked, and shown, including a project-grounded practice to reuse
+- [x] Learning activity complete — brief evidence-based recap connected the procedure-call requirement to graph construction and its regression test; learner skipped the live code tour.
+- [x] Optional edit and transfer reflection addressed — no optional code edit was made; learner shared a next-project reflection.
+- [x] `devpost/app-map.html` generated from finished code, checked, and shown, including a project-grounded practice to reuse
 
-Activity and evidence: [fill in after build]
-Route and stops: [fill in after build]
-Edit outcome: [fill in after build]
-Reflection: [fill in after build]
-Activity mode: [fill in after build]
+Activity and evidence: Brief recap linked the procedure-call behavior to `backend/graph.py` and `backend/tests/test_graph.py`; the learner confirmed the app works and described the revised map as clearer.
+Route and stops: The map provides an optional reference route through `frontend/src/App.jsx`, `backend/graph.py`, and `backend/tests/test_graph.py`; the learner chose not to do the live code tour.
+Edit outcome: No optional code edit was made.
+Reflection: Optional transfer prompt answered; the personal response is recorded in the ignored learner profile.
+Activity mode: Evidence-based recap and offline app map; no hands-on code tour.
 
 ## Revisions
 
@@ -106,3 +106,6 @@ Activity mode: [fill in after build]
 - The learner specified working-set behavior: uploads merge, same filename replaces, duplicate procedure IDs keep the latest definition with a warning, remove affects analysis only, reset restores the seven-file sample, and nothing persists. Added this as slice 6 before export/polish.
 - Uploaded SQL graph analysis now returns before a separate Gemini explanation request, so graph and deterministic risks stay available when Gemini is slow or unavailable.
 - The learner requested a current-analysis Markdown export, a parser connectivity dot, honest sample-only F1 labeling, and business-purpose summaries with a deterministic downstream failure impact line.
+- The learner requested concise object captions: procedure purpose from the first summary sentence (with a deterministic reads/writes fallback when unavailable), and table writer/reader descriptions derived from graph edges.
+- The learner completed the final hands-on check, reported the app works, and confirmed the proof of concept is ready to ship; backend tests and the frontend production build both passed.
+- The app map was revised to make the pipeline problem and dependency path the visual focus; the learner confirmed the simpler layout is clearer.

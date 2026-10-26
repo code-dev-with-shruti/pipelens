@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f7f8f5">
+  <title>PipeLens — See what breaks next</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #1d2b27;
+      --muted: #68746e;
+      --paper: #f7f8f5;
+      --white: #fff;
+      --line: #e1e6e1;
+      --green: #176b54;
+      --green-soft: #e9f3ed;
+      --amber: #bd741b;
+      --amber-soft: #fbf2e5;
+      --mono: "Cascadia Code", "SFMono-Regular", Consolas, monospace;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--paper);
+      color: var(--ink);
+      font: 16px/1.65 system-ui, -apple-system, "Segoe UI", sans-serif;
+    }
+    main { width: min(900px, calc(100% - 36px)); margin: 0 auto; padding: 38px 0 54px; }
+    .masthead { display: flex; justify-content: space-between; align-items: center; margin-bottom: 70px; }
+    .wordmark { display: flex; align-items: center; gap: 10px; font-weight: 750; letter-spacing: -.03em; }
+    .mark { width: 22px; height: 22px; border: 2px solid var(--green); border-radius: 7px; position: relative; }
+    .mark::before, .mark::after { content: ""; position: absolute; left: 4px; width: 10px; height: 2px; background: var(--green); }
+    .mark::before { top: 5px; }
+    .mark::after { top: 11px; }
+    .project-tag { color: var(--muted); font-size: .8rem; }
+    .eyebrow { color: var(--green); font-size: .75rem; font-weight: 750; letter-spacing: .12em; text-transform: uppercase; }
+    h1, h2, p { margin-top: 0; }
+    h1 { max-width: 740px; margin-bottom: 18px; font-size: clamp(2.55rem, 7vw, 4.5rem); line-height: 1.04; letter-spacing: -.065em; }
+    h2 { margin-bottom: 10px; font-size: clamp(1.35rem, 3vw, 1.8rem); line-height: 1.2; letter-spacing: -.035em; }
+    .intro { max-width: 680px; color: var(--muted); font-size: 1.12rem; }
+    .hero { margin-bottom: 42px; }
+    .section { border-top: 1px solid var(--line); padding: 32px 0; }
+    .section-label { margin-bottom: 8px; color: var(--muted); font-size: .75rem; font-weight: 750; letter-spacing: .1em; text-transform: uppercase; }
+    .problem-copy { max-width: 710px; color: #46534d; }
+    .proof { display: flex; flex-wrap: wrap; gap: 8px 26px; margin: 20px 0 24px; color: var(--muted); font-size: .9rem; }
+    .proof strong { color: var(--ink); font-size: 1.1rem; }
+    .impact-figure { margin: 0; border: 1px solid var(--line); border-radius: 14px; background: var(--white); overflow: hidden; }
+    .figure-heading { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 16px 20px 0; }
+    .figure-heading strong { font-size: .92rem; }
+    .figure-heading span { color: var(--muted); font-size: .79rem; }
+    .graph-wrap { padding: 6px 12px 0; }
+    .graph { display: block; width: 100%; height: auto; }
+    .graph .wire { fill: none; stroke: #aab8b0; stroke-width: 2; }
+    .graph .wire-hot { fill: none; stroke: var(--green); stroke-width: 2.5; }
+    .graph .procedure { fill: #fff; stroke: #cdd7d0; stroke-width: 1.5; }
+    .graph .procedure-start { fill: var(--green-soft); stroke: var(--green); stroke-width: 2; }
+    .graph .table-node { fill: #fbf2e5; stroke: #e5c89f; stroke-width: 1.5; }
+    .graph .node-title { fill: var(--ink); font: 600 14px system-ui, sans-serif; }
+    .graph .node-sub { fill: var(--muted); font: 11px system-ui, sans-serif; }
+    .graph .edge-label { fill: var(--green); font: 11px system-ui, sans-serif; }
+    .graph-mobile { display: none; }
+    .figure-foot { display: flex; align-items: center; justify-content: space-between; gap: 14px; border-top: 1px solid var(--line); padding: 13px 20px; }
+    .legend { display: flex; flex-wrap: wrap; gap: 12px; color: var(--muted); font-size: .76rem; }
+    .legend span { display: inline-flex; align-items: center; gap: 6px; }
+    .legend i { width: 9px; height: 9px; border-radius: 50%; background: var(--green); }
+    .legend .table-dot { background: var(--amber); }
+    .impact-count { color: var(--green); font-size: .86rem; font-weight: 750; white-space: nowrap; }
+    .caption { margin: 10px 2px 0; color: var(--muted); font-size: .82rem; }
+    .answer { max-width: 720px; color: #46534d; }
+    .answer strong { color: var(--ink); }
+    .code-route { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 18px; }
+    .route-stop { min-width: 0; padding: 15px; border: 1px solid var(--line); border-radius: 10px; background: var(--white); }
+    .route-stop .number { display: block; margin-bottom: 9px; color: var(--green); font-size: .75rem; font-weight: 800; }
+    .route-stop a { color: var(--ink); font-weight: 700; text-decoration-color: #a5cbb8; text-underline-offset: 3px; }
+    .route-stop p { margin: 6px 0 0; color: var(--muted); font-size: .82rem; line-height: 1.5; }
+    code { font-family: var(--mono); font-size: .84em; overflow-wrap: anywhere; }
+    a:focus-visible { outline: 3px solid #d39338; outline-offset: 3px; border-radius: 3px; }
+    .practice { padding-left: 16px; border-left: 3px solid var(--green); }
+    .practice p { margin: 0; color: #46534d; }
+    .run { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 16px; }
+    .command { padding: 14px; border-radius: 9px; background: #eef1ed; }
+    .command strong { display: block; margin-bottom: 5px; font-size: .78rem; }
+    .command code { color: #34423c; font-size: .75rem; }
+    footer { padding-top: 22px; color: var(--muted); font-size: .78rem; }
+    @media (max-width: 680px) {
+      main { width: min(100% - 28px, 900px); padding-top: 22px; }
+      .masthead { margin-bottom: 48px; }
+      .project-tag { max-width: 120px; text-align: right; }
+      .code-route, .run { grid-template-columns: 1fr; }
+      .figure-heading { align-items: flex-start; flex-direction: column; gap: 1px; }
+      .figure-foot { align-items: flex-start; flex-direction: column; }
+      .graph-desktop { display: none; }
+      .graph-mobile { display: block; }
+    }
+    @media (max-width: 460px) {
+      .graph .node-title { font-size: 12px; }
+      .graph .node-sub { font-size: 10px; }
+      .graph .edge-label { font-size: 9px; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <nav class="masthead" aria-label="Project">
+      <div class="wordmark"><span class="mark" aria-hidden="true"></span><span>PipeLens</span></div>
+      <span class="project-tag">Build With AI · Hackathon project</span>
+    </nav>
+
+    <header class="hero">
+      <p class="eyebrow">The hidden blast radius</p>
+      <h1>When this SQL step fails, what breaks next?</h1>
+      <p class="intro">In an undocumented pipeline, answering that can mean tracing procedure calls and table writes by hand. PipeLens turns the SQL into a map, so a new teammate can follow the impact instead of guessing.</p>
+    </header>
+
+    <section class="section" aria-labelledby="impact-heading">
+      <p class="section-label">One real question, answered</p>
+      <h2 id="impact-heading">Start at invoice loading. See the ripple.</h2>
+      <p class="problem-copy">The sample pipeline has seven procedures and thirteen tables. Select <code>load_invoices</code> and PipeLens traces its connected work: the call chain and the tables affected further downstream.</p>
+      <div class="proof" aria-label="Sample project facts">
+        <span><strong>7</strong> procedures</span>
+        <span><strong>13</strong> tables</span>
+        <span><strong>4 + 7</strong> downstream procedures + tables</span>
+      </div>
+
+      <figure class="impact-figure">
+        <div class="figure-heading">
+          <strong>Invoice path · sample project</strong>
+          <span>Direct procedure calls shown as solid wires</span>
+        </div>
+        <div class="graph-wrap">
+          <svg class="graph graph-desktop" viewBox="0 0 840 224" role="img" aria-labelledby="graph-title graph-description">
+            <title id="graph-title">Procedure call path from invoice loading to monthly reporting</title>
+            <desc id="graph-description">load_invoices calls clean_invoice_records, which calls reconcile_payments, which calls build_monthly_report. The selected starting procedure has four downstream procedures and seven downstream tables in the full graph.</desc>
+            <defs>
+              <marker id="call-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+                <path d="M0 0 L8 4 L0 8 Z" fill="#176b54"></path>
+              </marker>
+            </defs>
+            <path class="wire-hot" d="M180 82 H230" marker-end="url(#call-arrow)"></path>
+            <path class="wire-hot" d="M390 82 H440" marker-end="url(#call-arrow)"></path>
+            <path class="wire-hot" d="M600 82 H650" marker-end="url(#call-arrow)"></path>
+            <text class="edge-label" x="205" y="70" text-anchor="middle">calls</text>
+            <text class="edge-label" x="415" y="70" text-anchor="middle">calls</text>
+            <text class="edge-label" x="625" y="70" text-anchor="middle">calls</text>
+
+            <rect class="procedure-start" x="20" y="48" width="160" height="68" rx="9"></rect>
+            <text class="node-title" x="100" y="77" text-anchor="middle">load_invoices</text>
+            <text class="node-sub" x="100" y="98" text-anchor="middle">selected procedure</text>
+            <rect class="procedure" x="230" y="48" width="160" height="68" rx="9"></rect>
+            <text class="node-title" x="310" y="77" text-anchor="middle">clean_invoice_records</text>
+            <text class="node-sub" x="310" y="98" text-anchor="middle">procedure</text>
+            <rect class="procedure" x="440" y="48" width="160" height="68" rx="9"></rect>
+            <text class="node-title" x="520" y="77" text-anchor="middle">reconcile_payments</text>
+            <text class="node-sub" x="520" y="98" text-anchor="middle">procedure</text>
+            <rect class="procedure" x="650" y="48" width="170" height="68" rx="9"></rect>
+            <text class="node-title" x="735" y="77" text-anchor="middle">build_monthly_report</text>
+            <text class="node-sub" x="735" y="98" text-anchor="middle">procedure</text>
+
+            <path class="wire" d="M100 116 V166 H265"></path>
+            <path class="wire" d="M310 116 V166"></path>
+            <path class="wire" d="M520 116 V166"></path>
+            <path class="wire" d="M735 116 V166 H575"></path>
+            <rect class="table-node" x="265" y="148" width="310" height="48" rx="8"></rect>
+            <text class="node-title" x="420" y="169" text-anchor="middle">+ connected tables</text>
+            <text class="node-sub" x="420" y="186" text-anchor="middle">reads and writes across the full dependency graph</text>
+          </svg>
+          <svg class="graph graph-mobile" viewBox="0 0 320 380" role="img" aria-labelledby="mobile-graph-title mobile-graph-description">
+            <title id="mobile-graph-title">Vertical procedure call path from invoice loading to monthly reporting</title>
+            <desc id="mobile-graph-description">load_invoices calls clean_invoice_records, which calls reconcile_payments, which calls build_monthly_report.</desc>
+            <defs>
+              <marker id="mobile-call-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+                <path d="M0 0 L8 4 L0 8 Z" fill="#176b54"></path>
+              </marker>
+            </defs>
+            <path class="wire-hot" d="M160 70 V94" marker-end="url(#mobile-call-arrow)"></path>
+            <path class="wire-hot" d="M160 158 V182" marker-end="url(#mobile-call-arrow)"></path>
+            <path class="wire-hot" d="M160 246 V270" marker-end="url(#mobile-call-arrow)"></path>
+            <text class="edge-label" x="178" y="86">calls</text>
+            <text class="edge-label" x="178" y="174">calls</text>
+            <text class="edge-label" x="178" y="262">calls</text>
+            <rect class="procedure-start" x="44" y="14" width="232" height="56" rx="9"></rect>
+            <text class="node-title" x="160" y="39" text-anchor="middle">load_invoices</text>
+            <text class="node-sub" x="160" y="57" text-anchor="middle">selected procedure</text>
+            <rect class="procedure" x="44" y="102" width="232" height="56" rx="9"></rect>
+            <text class="node-title" x="160" y="127" text-anchor="middle">clean_invoice_records</text>
+            <text class="node-sub" x="160" y="145" text-anchor="middle">procedure</text>
+            <rect class="procedure" x="44" y="190" width="232" height="56" rx="9"></rect>
+            <text class="node-title" x="160" y="215" text-anchor="middle">reconcile_payments</text>
+            <text class="node-sub" x="160" y="233" text-anchor="middle">procedure</text>
+            <rect class="procedure" x="44" y="278" width="232" height="56" rx="9"></rect>
+            <text class="node-title" x="160" y="303" text-anchor="middle">build_monthly_report</text>
+            <text class="node-sub" x="160" y="321" text-anchor="middle">procedure</text>
+          </svg>
+        </div>
+        <figcaption class="figure-foot">
+          <span class="legend"><span><i aria-hidden="true"></i>Procedure</span><span><i class="table-dot" aria-hidden="true"></i>Table impact</span></span>
+          <span class="impact-count">4 procedures · 7 tables downstream</span>
+        </figcaption>
+      </figure>
+      <p class="caption">The wire diagram shows the direct call chain. The fourth affected procedure, <code>archive_monthly_reports</code>, is reached through <code>monthly_report</code>. The count is the full transitive impact; dynamic SQL dependencies are marked uncertain rather than treated as fact.</p>
+    </section>
+
+    <section class="section" aria-labelledby="approach-heading">
+      <p class="section-label">Why this is more than an AI summary</p>
+      <h2 id="approach-heading">The graph is computed. The explanation is assistive.</h2>
+      <p class="answer"><strong>PipeLens parses reads, writes, and procedure calls, then calculates downstream reachability.</strong> That keeps impact grounded in code relationships. AI is used only to explain procedure purpose and steps; it does not invent edges, risks, or failure counts.</p>
+    </section>
+
+    <section class="section" aria-labelledby="code-heading">
+      <p class="section-label">Optional, for the curious</p>
+      <h2 id="code-heading">Follow one line from click to answer</h2>
+      <div class="code-route">
+        <div class="route-stop">
+          <span class="number">01 · THE CLICK</span>
+          <a href="../frontend/src/App.jsx"><code>frontend/src/App.jsx</code></a>
+          <p><code>GraphCanvas</code> selects a node; the detail panel renders its downstream list.</p>
+        </div>
+        <div class="route-stop">
+          <span class="number">02 · THE GRAPH</span>
+          <a href="../backend/graph.py"><code>backend/graph.py</code></a>
+          <p><code>build_pipeline_graph</code> adds edges; <code>downstream_by_node</code> computes reachability.</p>
+        </div>
+        <div class="route-stop">
+          <span class="number">03 · THE SAFETY NET</span>
+          <a href="../backend/tests/test_graph.py"><code>backend/tests/test_graph.py</code></a>
+          <p><code>test_every_called_procedure_is_a_direct_edge_and_downstream</code> guards the call path.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" aria-labelledby="practice-heading">
+      <p class="section-label">A practice to take to the next build</p>
+      <h2 id="practice-heading">Make the important behavior hard to lose.</h2>
+      <div class="practice">
+        <p>A missing procedure-call edge once hid part of the true impact. The graph now includes calls, and a focused test protects that requirement. On another project, define what must remain true, then write a test that would fail if it stopped being true.</p>
+      </div>
+    </section>
+
+    <section class="section" aria-labelledby="run-heading">
+      <p class="section-label">Want to try it?</p>
+      <h2 id="run-heading">Run it locally</h2>
+      <div class="run">
+        <div class="command">
+          <strong>Terminal 1 · backend</strong>
+          <code>.\.venv\Scripts\python.exe -m uvicorn backend.main:app --reload --host 127.0.0.1 --port 8000</code>
+        </div>
+        <div class="command">
+          <strong>Terminal 2 · frontend</strong>
+          <code>Set-Location .\frontend</code><br>
+          <code>npm run dev -- --host 127.0.0.1</code>
+        </div>
+      </div>
+      <p class="caption">Open the Vite address shown in the terminal. This standalone map works offline and links to source files relative to the repository.</p>
+    </section>
+
+    <footer>
+      PipeLens is a local proof of concept for understanding small T-SQL pipelines—not a production monitor. This project map describes the current implementation and may need refreshing when the code changes.
+    </footer>
+  </main>
+</body>
+</html>
