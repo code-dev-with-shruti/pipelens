@@ -14,7 +14,7 @@ PipeLens is not just a SQL explainer. Its distinctive value is that it turns a m
 A new engineer joining a team with undocumented SQL pipelines. They are trying to understand how procedures connect, where data flows, and which reports or downstream processes are affected when one step fails. Today they would read dozens of SQL files, ask teammates, or infer the relationships by hand.
 
 ## The Core Loop
-The user opens the app, loads a sample project or uploads a set of SQL files, and sees the pipeline as an interactive graph. They click one procedure or table, immediately see what is downstream of it, and read an explanation of that procedure with associated risks. The loop is: inspect → understand impact → export the summary.
+The user opens the app with a sample project loaded or uploads SQL files into the current working set. They can remove files from that in-memory set, and each change re-analyzes the full set. They click one procedure or table, immediately see what is downstream of it, and read an explanation of that procedure with associated risks. The loop is: inspect → understand impact → export the summary.
 
 ## Inspiration & Identity
 The product should feel like a practical engineering tool, not a generic chat interface. It should feel precise, trustworthy, and fast. The identity is “database operations clarity for busy engineers”: a clean graph, sharp highlights, clear side-panel details, and a reference-quality export.
@@ -29,6 +29,7 @@ A new engineer loads the sample project, sees procedures and tables as nodes wit
 In scope:
 - T-SQL stored procedures only
 - 3–5 uploaded SQL files or a sample project with ~7 procedures
+- Add/replace/remove SQL files in a non-persistent working set; reset to the sample at any time
 - Interactive graph with reads/writes and downstream impact
 - Plain-English procedure summary, ordered steps, and risk list
 - Markdown export for the pipeline

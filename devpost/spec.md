@@ -9,9 +9,9 @@ status: approved
 
 PipeLens has two main jobs: first, it reads a small set of SQL files and builds a graph of how procedures and tables connect; second, it lets a user click a procedure or table and see everything that depends on it. The graph is created by a parser, not by free-form model guessing. That makes the dependency map trustworthy.
 
-The backend takes uploaded SQL or the built-in sample project, extracts reads and writes, builds a directed graph, and computes downstream impact using graph traversal. The frontend displays the graph and a side panel with a plain-English summary, ordered steps, and deterministic risks. Gemini receives parsed procedure relationships only and writes summaries and steps; it never decides graph edges, risks, or downstream impact.
+The backend takes uploaded SQL or the built-in sample project, extracts reads and writes, builds a directed graph, and computes downstream impact using graph traversal. The frontend displays the graph and a side panel with a plain-English summary, ordered steps, and deterministic risks. Gemini receives parsed procedure relationships only and writes summaries and steps; it never decides graph edges, risks, or downstream impact. Uploaded-file graph analysis finishes before a separate explanation request starts, so a slow or unavailable Gemini API does not block the graph or risks.
 
-The sample project uses `samples/retail_billing/llm_cache.json` so normal sample analysis never depends on a live API call. Generate or refresh this cache once with `.\.venv\Scripts\python.exe -m backend.generate_sample_cache`; uploaded-file analysis calls Gemini live.
+The sample project uses `samples/retail_billing/llm_cache.json` so normal sample analysis never depends on a live API call. Generate or refresh this cache once with `.\.venv\Scripts\python.exe -m backend.generate_sample_cache`; uploaded files request Gemini explanations only after deterministic graph analysis has completed.
 
 This shape keeps the project small and credible for a hackathon: the app proves the core idea without needing a live database, user accounts, or production infrastructure.
 
@@ -36,7 +36,8 @@ PRD ref: `prd.md > The Core Journey`.
 3. Frontend graph canvas with click-to-highlight behavior.
 4. Readable selected-subgraph view, Gemini summaries/steps, and deterministic risk display.
 5. Accuracy check against planted ground truth with a UI badge.
-6. Export and final polish.
+6. Add, replace, and remove files in the working set; re-analyze the complete set after each change.
+7. Export and final polish.
 
 ## Stack
 
@@ -118,8 +119,10 @@ The expected tone is practical and technical: useful to a new engineer who wants
 ## Components
 
 ### Sample Loader and Upload Panel
-What it does: allows the user to load the built-in sample pipeline or upload a small set of SQL files.
+What it does: starts with the built-in sample and allows `.sql` files to be added to the current in-memory working set, replaced by same-name uploads, or removed from the analysis. Reset restores the seven sample files. Each valid change re-analyzes the complete set; removal never deletes a disk or repository file.
 PRD ref: `prd.md > Load and inspect a pipeline`.
+
+Limits and feedback: accept up to 15 uploaded files per selection and 20,000 characters per file. Show per-file validation errors while keeping other valid files usable. Warn when an upload replaces a filename or when a later file definition replaces an earlier procedure definition. The working set is not persisted; refresh starts with the sample again.
 
 ### Graph Canvas
 What it does: renders procedures and tables as nodes and edges as read/write relationships.
@@ -180,6 +183,7 @@ Core entities:
 
 Where data lives:
 - Input SQL files live temporarily in the request payload.
+- The current file working set lives only in frontend component state; refresh restores the bundled sample.
 - Parsed dependency data is assembled in the backend analysis layer.
 - The frontend stores the current result in component state and re-renders based on selection.
 - Exported Markdown is generated from the result payload and downloaded client-side.
@@ -239,7 +243,7 @@ project/
   - Required configuration: `GEMINI_API_KEY` and a Gemini model ID in `MODEL`, both in the ignored repository-root `.env` file.
   - Document link: https://ai.google.dev/gemini-api/docs
   - Failure mode: if the model fails or returns invalid JSON, the app surfaces a clear guide error and keeps the parser-derived graph and deterministic risks intact.
-  - Demo behavior: sample analysis reads `samples/retail_billing/llm_cache.json`; only uploaded-file analysis calls Gemini live.
+  - Demo behavior: sample analysis reads `samples/retail_billing/llm_cache.json`; uploaded-file graph analysis is deterministic, then a separate request calls Gemini for explanations.
 
 - sqlglot
   - Purpose: parse T-SQL and extract reads and writes.
@@ -257,7 +261,7 @@ project/
 
 - Invalid or unsupported SQL input → show a readable error and keep the UI stable.
 - API failure during analysis → show a user-friendly message and preserve the current state.
-- LLM output schema mismatch → show a readable guide error without corrupting the graph or risk findings.
+- Gemini failure or invalid explanation output → show an AI insights error without blocking or corrupting the graph or risk findings.
 - Dynamic SQL or unsupported SQL features → show a dashed or flagged uncertain edge instead of pretending the dependency is certain.
 
 ## What Was Simplified and Why

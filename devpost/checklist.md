@@ -59,7 +59,17 @@ Build mode: learn
   Learner check: Review the accuracy badge and its explanation against the sample project.
   Commit: `Add accuracy check`
 
-- [ ] **6. Export and polish**
+- [ ] **6. Manage uploaded SQL files**
+  Becomes usable: A user can add SQL files to the sample or current working set, remove a file from the analysis, and restore the sample without changing files on disk.
+  Why now: The pipeline explorer needs a practical way to analyze another user's SQL, and file changes must be reflected in the graph and risks.
+  PRD ref: `prd.md > Load and inspect a pipeline`, `prd.md > Loading and error states`
+  Spec ref: `spec.md > Components`, `spec.md > Data Model`, `spec.md > Important Failure Modes`
+  Build: Add a visible file list, multi-file SQL upload, replace-by-filename notices, duplicate-procedure warnings with latest definition winning, per-file validation, remove controls, reset-to-sample action, empty state, and full-set reanalysis. Keep all changes in memory only. Preserve cached Gemini explanations for unchanged sample files; request live explanations for uploaded or edited files.
+  Verify (mechanical): Run backend tests and frontend build; verify upload validation, filename replacement, duplicate-procedure precedence, remove/reset behavior, cache/live explanation routing, graph availability when Gemini fails, and that no file is written or deleted on disk.
+  Learner check: Upload a related SQL procedure and confirm its connections appear; remove it and confirm the graph returns to the remaining set; reset to sample and confirm the seven bundled files return.
+  Commit: `Manage uploaded SQL working set`
+
+- [ ] **7. Export and polish**
   Becomes usable: The user can export a Markdown onboarding document and the app feels demo-ready.
   Why now: The export and polish make the single-minute demo story strong.
   PRD ref: `prd.md > Export onboarding doc`, `prd.md > Loading and error states`
@@ -93,3 +103,5 @@ Activity mode: [fill in after build]
 ## Revisions
 
 - The learner confirmed the initial graph and downstream behavior, closing slice 3. Slice 4 now includes the specifically requested readability refinement and Gemini/deterministic-risk detail behavior; slice 5 displays its ground-truth result in the UI.
+- The learner specified working-set behavior: uploads merge, same filename replaces, duplicate procedure IDs keep the latest definition with a warning, remove affects analysis only, reset restores the seven-file sample, and nothing persists. Added this as slice 6 before export/polish.
+- Uploaded SQL graph analysis now returns before a separate Gemini explanation request, so graph and deterministic risks stay available when Gemini is slow or unavailable.

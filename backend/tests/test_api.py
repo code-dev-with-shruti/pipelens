@@ -99,9 +99,8 @@ def test_analyze_returns_deterministic_downstream_and_uncertain_edges(monkeypatc
 def test_upload_generates_explanations_and_skips_sample_accuracy(monkeypatch):
     monkeypatch.setattr(
         "backend.main.generate_explanations",
-        lambda procedures: {
-            procedure["id"]: {"summary": "Generated summary.", "steps": ["Read the source."]}
-            for procedure in procedures
+        lambda _: {
+            "dbo.one": {"summary": "Generated summary.", "steps": ["Read the source."]}
         },
     )
 
@@ -115,9 +114,216 @@ def test_upload_generates_explanations_and_skips_sample_accuracy(monkeypatch):
 
     assert response.status_code == 200
     result = response.json()
-    assert result["procedures"][0]["summary"] == "Generated summary."
-    assert result["procedures"][0]["steps"] == ["Read the source."]
+    assert result["explanation_pending"] == ["dbo.one"]
+    assert "summary" not in result["procedures"][0]
     assert "accuracy" not in result
+
+    explanation_response = client.post("/explanations", json={
+        "files": [{
+            "name": "one.sql",
+            "sql": "CREATE PROCEDURE dbo.one AS BEGIN SELECT id FROM dbo.source_table; END;",
+        }],
+    })
+
+    assert explanation_response.status_code == 200
+    assert explanation_response.json()["procedures"]["dbo.one"] == {
+        "summary": "Generated summary.",
+        "steps": ["Read the source."],
+    }
+
+
+def test_upload_graph_remains_available_when_gemini_is_unavailable(monkeypatch):
+    monkeypatch.setattr(
+        "backend.main.generate_explanations",
+        lambda _: (_ for _ in ()).throw(RuntimeError("Gemini quota unavailable.")),
+    )
+    sql_file = {
+        "name": "one.sql",
+        "sql": "CREATE PROCEDURE dbo.one AS BEGIN DELETE FROM dbo.source_table; END;",
+    }
+
+    analysis_response = client.post("/analyze", json={
+        "source": "upload",
+        "files": [sql_file],
+    })
+    explanation_response = client.post("/explanations", json={"files": [sql_file]})
+
+    assert analysis_response.status_code == 200
+    result = analysis_response.json()
+    assert result["procedures"][0]["id"] == "dbo.one"
+    assert result["procedures"][0]["risks"]
+    assert result["explanation_pending"] == ["dbo.one"]
+    assert explanation_response.status_code == 502
+    assert explanation_response.json()["detail"] == "Gemini quota unavailable."
+
+
+def test_upload_uses_sample_cache_and_generates_only_new_file_explanations(monkeypatch, tmp_path):
+    sample_procedure = {
+        "id": "dbo.sample_step",
+        "file": "sample_step.sql",
+        "reads": [],
+        "writes": [],
+        "called_procedures": [],
+        "has_dynamic_sql": False,
+        "uncertain_edges": [],
+        "risks": [],
+    }
+    (tmp_path / "llm_cache.json").write_text(
+        json.dumps({
+            "procedures": {
+                "dbo.sample_step": {
+                    "summary": "Cached sample summary.",
+                    "steps": ["Use the sample cache."],
+                },
+            },
+        }),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr("backend.main.CACHE_PATH", tmp_path / "llm_cache.json")
+    generated_ids = []
+
+    def generate_only_new(procedures):
+        generated_ids.extend(procedure["id"] for procedure in procedures)
+        return {
+            procedure["id"]: {
+                "summary": f"Live summary for {procedure['id']}.",
+                "steps": ["Use live generation."],
+            }
+            for procedure in procedures
+        }
+
+    monkeypatch.setattr(
+        "backend.main.generate_explanations",
+        generate_only_new,
+    )
+
+    response = client.post("/analyze", json={
+        "source": "upload",
+        "files": [
+            {
+                "name": sample_procedure["file"],
+                "sql": "CREATE PROCEDURE dbo.sample_step AS BEGIN SELECT 1; END;",
+                "use_cached_explanation": True,
+            },
+            {
+                "name": "new_step.sql",
+                "sql": "CREATE PROCEDURE dbo.new_step AS BEGIN SELECT id FROM dbo.sample_table; END;",
+            },
+        ],
+    })
+
+    assert response.status_code == 200
+    procedures = {procedure["id"]: procedure for procedure in response.json()["procedures"]}
+    assert procedures["dbo.sample_step"]["summary"] == "Cached sample summary."
+    assert response.json()["explanation_pending"] == ["dbo.new_step"]
+
+    explanation_response = client.post("/explanations", json={
+        "files": [{
+            "name": "new_step.sql",
+            "sql": "CREATE PROCEDURE dbo.new_step AS BEGIN SELECT id FROM dbo.sample_table; END;",
+        }],
+    })
+    assert explanation_response.status_code == 200
+    assert explanation_response.json()["procedures"]["dbo.new_step"]["summary"] == (
+        "Live summary for dbo.new_step."
+    )
+    assert generated_ids == ["dbo.new_step"]
+
+
+def test_upload_reports_invalid_files_but_analyzes_valid_files(monkeypatch):
+    monkeypatch.setattr(
+        "backend.main.generate_explanations",
+        lambda procedures: {
+            procedure["id"]: {"summary": "Generated.", "steps": ["Read the source."]}
+            for procedure in procedures
+        },
+    )
+
+    response = client.post("/analyze", json={
+        "source": "upload",
+        "files": [
+            {"name": "empty.sql", "sql": "  "},
+            {"name": "notes.txt", "sql": "CREATE PROCEDURE dbo.notes AS SELECT 1;"},
+            {"name": "valid.sql", "sql": "CREATE PROCEDURE dbo.valid AS SELECT 1;"},
+            {"name": "not-procedure.sql", "sql": "SELECT * FROM dbo.source_table;"},
+        ],
+    })
+
+    assert response.status_code == 200
+    result = response.json()
+    assert [procedure["id"] for procedure in result["procedures"]] == ["dbo.valid"]
+    assert {error["name"] for error in result["file_errors"]} == {
+        "empty.sql",
+        "notes.txt",
+        "not-procedure.sql",
+    }
+
+
+def test_analyze_rejects_files_over_character_limit_individually(monkeypatch):
+    monkeypatch.setattr(
+        "backend.main.generate_explanations",
+        lambda procedures: {
+            procedure["id"]: {"summary": "Generated.", "steps": ["Read the source."]}
+            for procedure in procedures
+        },
+    )
+
+    response = client.post("/analyze", json={
+        "source": "upload",
+        "files": [
+            {"name": "large.sql", "sql": "x" * 20_001},
+            {"name": "valid.sql", "sql": "CREATE PROCEDURE dbo.valid AS SELECT 1;"},
+        ],
+    })
+
+    assert response.status_code == 200
+    result = response.json()
+    assert [procedure["id"] for procedure in result["procedures"]] == ["dbo.valid"]
+    assert result["file_errors"] == [{
+        "name": "large.sql",
+        "message": "The file exceeds the 20,000-character limit.",
+    }]
+
+
+def test_latest_duplicate_procedure_definition_wins_with_warning(monkeypatch):
+    monkeypatch.setattr(
+        "backend.main.generate_explanations",
+        lambda procedures: {
+            procedure["id"]: {
+                "summary": f"Summary from {procedure['file']}.",
+                "steps": ["Use the latest definition."],
+            }
+            for procedure in procedures
+        },
+    )
+
+    response = client.post("/analyze", json={
+        "source": "upload",
+        "files": [
+            {"name": "first.sql", "sql": "CREATE PROCEDURE dbo.shared AS SELECT id FROM dbo.old_table;"},
+            {"name": "latest.sql", "sql": "CREATE PROCEDURE dbo.shared AS SELECT id FROM dbo.new_table;"},
+        ],
+    })
+
+    assert response.status_code == 200
+    result = response.json()
+    assert len(result["procedures"]) == 1
+    assert result["procedures"][0]["file"] == "latest.sql"
+    assert result["explanation_pending"] == ["dbo.shared"]
+    assert "dbo.new_table" in result["tables"]
+    assert "dbo.old_table" not in result["tables"]
+    assert "using the latest file, latest.sql" in result["warnings"][0]
+
+    explanation_response = client.post("/explanations", json={
+        "files": [{
+            "name": "latest.sql",
+            "sql": "CREATE PROCEDURE dbo.shared AS SELECT id FROM dbo.new_table;",
+        }],
+    })
+    assert explanation_response.status_code == 200
+    assert explanation_response.json()["procedures"]["dbo.shared"]["summary"] == (
+        "Summary from latest.sql."
+    )
 
 
 def test_missing_sample_cache_keeps_graph_and_reports_action(monkeypatch, tmp_path):

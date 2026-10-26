@@ -42,6 +42,11 @@ The tone should feel like an internal engineering tool: useful, direct, and calm
 
 The user can load a sample project or upload a small set of SQL files. The app turns the files into a dependency graph that makes the connections visible.
 
+- Start with the seven-file sample as the default working set.
+- Uploading `.sql` files merges them into the current working set. A same-name file is replaced with a notice; if multiple files define the same procedure, the latest file wins with a warning.
+- Show a “Files in this analysis” list with a remove action per file. Removal only affects the in-memory working set and re-analyzes the remaining files; it never deletes a disk or repository file.
+- Provide “Reset to sample” to restore the original seven files. Removing every file shows an empty state that invites upload or reset. Refreshing the page starts over with the sample; no project history is persisted.
+- Accept `.sql` files only, up to 15 selected at a time and 20,000 characters per file. Explain invalid files individually while continuing to analyze valid files.
 - The app shows procedures as nodes and tables as nodes.
 - Edges show read and write relationships.
 - Confirmed edges are solid; uncertain edges are dashed.
@@ -91,8 +96,10 @@ The user can export the pipeline analysis as a Markdown document for onboarding 
 The app handles empty, invalid, oversized, or failed inputs in a readable way.
 
 - There is a clear loading state while analysis runs.
+- Uploaded graph analysis and deterministic risks appear before any live AI explanation request completes.
 - Empty input produces a clear explanation.
 - Invalid files or API issues show a human-readable failure.
+- If an uploaded file has an unavailable AI explanation, its parsed graph and deterministic risks remain usable.
 
 ## States and Boundaries
 

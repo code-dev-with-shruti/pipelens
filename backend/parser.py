@@ -4,8 +4,15 @@ from typing import Dict, List
 
 def extract_procedure_relationships(sql: str, file_name: str = "") -> Dict[str, List[str] | str | bool]:
     normalized = sql.strip()
-    match = re.search(r"(?:CREATE|ALTER)\s+PROCEDURE\s+(?:[A-Za-z_][A-Za-z0-9_]*\.)?([A-Za-z_][A-Za-z0-9_]*)", normalized, flags=re.I)
-    procedure_name = match.group(1) if match else "unknown_procedure"
+    match = re.search(
+        r"(?:CREATE(?:\s+OR\s+ALTER)?|ALTER)\s+PROCEDURE\s+"
+        r"(?:[A-Za-z_][A-Za-z0-9_]*\.)?([A-Za-z_][A-Za-z0-9_]*)",
+        normalized,
+        flags=re.I,
+    )
+    if not match:
+        raise ValueError("No supported CREATE or ALTER PROCEDURE declaration was found.")
+    procedure_name = match.group(1)
     procedure_id = f"dbo.{procedure_name}"
 
     read_pattern = r"(?:FROM|JOIN)\s+([#A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*)"

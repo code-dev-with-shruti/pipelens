@@ -62,6 +62,15 @@ def test_dynamic_sql_marks_an_uncertain_edge():
     }]
 
 
+def test_create_or_alter_procedure_is_supported():
+    result = extract_procedure_relationships(
+        "CREATE OR ALTER PROCEDURE dbo.refresh_summary AS BEGIN SELECT id FROM dbo.source; END;"
+    )
+
+    assert result["procedure"] == "dbo.refresh_summary"
+    assert result["reads"] == ["dbo.source"]
+
+
 def test_sample_relationships_match_ground_truth():
     ground_truth = json.loads((PROJECT_ROOT / "samples" / "ground_truth.json").read_text(encoding="utf-8"))
     found_procedures = set()

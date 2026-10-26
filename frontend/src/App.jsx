@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Background,
   Controls,
@@ -14,6 +14,43 @@ import dagre from '@dagrejs/dagre'
 const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'
 const NODE_WIDTH = 244
 const NODE_HEIGHT = 84
+const MAX_UPLOAD_BATCH = 15
+const MAX_SQL_CHARACTERS = 20_000
+
+async function requestAnalysis(files, source) {
+  const response = await fetch(`${API_URL}/analyze`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      source,
+      files: files.map(({ name, sql, isSample }) => ({
+        name,
+        sql,
+        use_cached_explanation: Boolean(isSample),
+      })),
+    }),
+  })
+  if (!response.ok) {
+    const failure = await response.json()
+    throw new Error(failure.detail || 'The SQL analysis request did not complete.')
+  }
+  return response.json()
+}
+
+async function requestExplanations(files) {
+  const response = await fetch(`${API_URL}/explanations`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      files: files.map(({ name, sql }) => ({ name, sql })),
+    }),
+  })
+  if (!response.ok) {
+    const failure = await response.json()
+    throw new Error(failure.detail || 'AI insights could not be generated.')
+  }
+  return response.json()
+}
 
 function ProcedureNode({ data }) {
   return (
@@ -205,44 +242,181 @@ function GraphCanvas({ graph, result, selectedId, onNodeSelect }) {
 
 function App() {
   const [result, setResult] = useState(null)
+  const [workingFiles, setWorkingFiles] = useState([])
   const [selectedId, setSelectedId] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [fileIssues, setFileIssues] = useState([])
+  const [fileNotices, setFileNotices] = useState([])
+  const analysisSequence = useRef(0)
 
-  useEffect(() => {
-    let cancelled = false
-    async function loadSample() {
-      setLoading(true)
-      setError('')
+  async function analyzeFileSet(
+    files,
+    source = 'upload',
+    defaultSelection = null,
+    initialNotices = [],
+    initialIssues = [],
+  ) {
+    const sequence = ++analysisSequence.current
+    setLoading(true)
+    setError('')
+    try {
+      const analysis = await requestAnalysis(files, source)
+      if (sequence !== analysisSequence.current) return false
+      const invalidNames = new Set((analysis.file_errors || []).map((item) => item.name))
+      setWorkingFiles(files.filter((file) => !invalidNames.has(file.name)))
+      setResult(analysis)
+      if (analysis.explanation_pending?.length) {
+        const pending = new Set(analysis.explanation_pending)
+        const pendingFiles = analysis.procedures
+          .filter((procedure) => pending.has(procedure.id))
+          .map((procedure) => files.find((file) => !file.isSample && file.name === procedure.file))
+          .filter(Boolean)
+        void requestExplanations(pendingFiles)
+          .then(({ procedures: generated }) => {
+            if (sequence !== analysisSequence.current) return
+            setResult((current) => current && ({
+              ...current,
+              procedures: current.procedures.map((procedure) => (
+                generated[procedure.id]
+                  ? { ...procedure, ...generated[procedure.id] }
+                  : procedure
+              )),
+              explanation_pending: [],
+            }))
+          })
+          .catch((explanationError) => {
+            if (sequence !== analysisSequence.current) return
+            setResult((current) => current && ({
+              ...current,
+              explanation_pending: [],
+              explanation_error: explanationError.message || 'AI insights could not be generated.',
+            }))
+          })
+      }
+      setFileIssues([...initialIssues, ...(analysis.file_errors || [])])
+      setFileNotices([...initialNotices, ...(analysis.warnings || [])])
+      setSelectedId((current) => {
+        if (current && Object.hasOwn(analysis.downstream, current)) return current
+        return defaultSelection && Object.hasOwn(analysis.downstream, defaultSelection)
+          ? defaultSelection
+          : null
+      })
+      return true
+    } catch (requestError) {
+      if (sequence === analysisSequence.current) {
+        setError(requestError.message || 'PipeLens could not connect to the backend.')
+      }
+      return false
+    } finally {
+      if (sequence === analysisSequence.current) setLoading(false)
+    }
+  }
+
+  async function loadSample() {
+    const sequence = ++analysisSequence.current
+    setLoading(true)
+    setError('')
+    setFileIssues([])
+    setFileNotices([])
+    try {
+      const response = await fetch(`${API_URL}/sample`)
+      if (!response.ok) {
+        const failure = await response.json()
+        throw new Error(failure.detail || 'Could not load the bundled sample project.')
+      }
+      const sample = await response.json()
+      const sampleFiles = sample.files.map((file) => ({ ...file, isSample: true }))
+      const analysis = await requestAnalysis(sampleFiles, 'sample')
+      if (sequence !== analysisSequence.current) return
+      setWorkingFiles(sampleFiles)
+      setResult(analysis)
+      setSelectedId('dbo.load_invoices')
+      setFileIssues(analysis.file_errors || [])
+      setFileNotices(analysis.warnings || [])
+    } catch (requestError) {
+      if (sequence === analysisSequence.current) {
+        setError(requestError.message || 'PipeLens could not connect to the backend.')
+      }
+    } finally {
+      if (sequence === analysisSequence.current) setLoading(false)
+    }
+  }
+
+  async function handleUpload(event) {
+    const selectedFiles = Array.from(event.target.files || [])
+    event.target.value = ''
+    if (!selectedFiles.length) return
+    setLoading(true)
+    setError('')
+
+    const issues = []
+    const notices = []
+    const acceptedFiles = []
+    for (const [index, file] of selectedFiles.entries()) {
+      if (index >= MAX_UPLOAD_BATCH) {
+        issues.push({ name: file.name, message: `Select no more than ${MAX_UPLOAD_BATCH} files at a time.` })
+        continue
+      }
+      if (!file.name.toLowerCase().endsWith('.sql')) {
+        issues.push({ name: file.name, message: 'Only .sql files are supported.' })
+        continue
+      }
       try {
-        const sampleResponse = await fetch(`${API_URL}/sample`)
-        if (!sampleResponse.ok) {
-          const failure = await sampleResponse.json()
-          throw new Error(failure.detail || 'Could not load the bundled sample project.')
+        const sql = await file.text()
+        if (!sql.trim()) {
+          issues.push({ name: file.name, message: 'The file is empty.' })
+          continue
         }
-        const sample = await sampleResponse.json()
-        const analysisResponse = await fetch(`${API_URL}/analyze`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ...sample, source: 'sample' }),
-        })
-        if (!analysisResponse.ok) {
-          const failure = await analysisResponse.json()
-          throw new Error(failure.detail || 'The SQL analysis request did not complete.')
+        if (sql.length > MAX_SQL_CHARACTERS) {
+          issues.push({ name: file.name, message: 'The file exceeds the 20,000-character limit.' })
+          continue
         }
-        const analysis = await analysisResponse.json()
-        if (!cancelled) {
-          setResult(analysis)
-          setSelectedId('dbo.load_invoices')
+        if (!/(?:CREATE(?:\s+OR\s+ALTER)?|ALTER)\s+PROCEDURE\b/i.test(sql)) {
+          issues.push({ name: file.name, message: 'No supported stored procedure declaration was found.' })
+          continue
         }
-      } catch (requestError) {
-        if (!cancelled) setError(requestError.message || 'PipeLens could not connect to the backend.')
-      } finally {
-        if (!cancelled) setLoading(false)
+        acceptedFiles.push({ name: file.name, sql, isSample: false })
+      } catch {
+        issues.push({ name: file.name, message: 'This file could not be read.' })
       }
     }
+
+    const mergedFiles = new Map(workingFiles.map((file) => [file.name, file]))
+    for (const file of acceptedFiles) {
+      if (mergedFiles.has(file.name)) {
+        notices.push(`${file.name} replaced the file with the same name in this analysis.`)
+        mergedFiles.delete(file.name)
+      }
+      mergedFiles.set(file.name, file)
+    }
+    if (acceptedFiles.length) {
+      await analyzeFileSet(Array.from(mergedFiles.values()), 'upload', null, notices, issues)
+    } else {
+      setFileIssues(issues)
+      setFileNotices(notices)
+      setLoading(false)
+    }
+  }
+
+  async function removeWorkingFile(name) {
+    const remainingFiles = workingFiles.filter((file) => file.name !== name)
+    setFileIssues([])
+    const notice = `${name} was removed from this analysis only; the file on disk was not changed.`
+    if (remainingFiles.length) {
+      await analyzeFileSet(remainingFiles, 'upload', null, [notice])
+    } else {
+      analysisSequence.current += 1
+      setWorkingFiles([])
+      setResult(null)
+      setSelectedId(null)
+      setFileNotices([notice])
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
     loadSample()
-    return () => { cancelled = true }
   }, [])
 
   const graph = useMemo(
@@ -268,9 +442,13 @@ function App() {
         </a>
         <div className="project-meta">
           <span className="live-dot" />
-          <span>RETAIL BILLING</span>
+          <span>
+            {workingFiles.some((file) => file.isSample)
+              ? workingFiles.every((file) => file.isSample) ? 'RETAIL BILLING' : 'SAMPLE + UPLOADS'
+              : 'CUSTOM ANALYSIS'}
+          </span>
           <span className="meta-divider" />
-          <span>LOCAL SAMPLE</span>
+          <span>{workingFiles.length ? 'IN-MEMORY SET' : 'EMPTY ANALYSIS'}</span>
         </div>
         <div className="topbar-right">
           <span className="status-label"><span className="status-check">✓</span> Parser connected</span>
@@ -291,6 +469,65 @@ function App() {
               <div><strong>{tableCount.toString().padStart(2, '0')}</strong><span>tables</span></div>
             </div>
           </div>
+
+          <section className="file-manager" aria-label="Files in this analysis">
+            <div className="files-toolbar">
+              <div className="files-heading">
+                <strong>Files in this analysis</strong>
+                <span>{workingFiles.length} {workingFiles.length === 1 ? 'file' : 'files'}</span>
+              </div>
+              <div className="file-actions">
+                <label className={`file-action${loading ? ' is-disabled' : ''}`}>
+                  Add SQL files
+                  <input
+                    type="file"
+                    accept=".sql"
+                    multiple
+                    disabled={loading}
+                    onChange={handleUpload}
+                    aria-label="Add SQL files to this analysis"
+                  />
+                </label>
+                <button className="reset-action" type="button" onClick={loadSample} disabled={loading}>
+                  Reset to sample
+                </button>
+              </div>
+            </div>
+            {workingFiles.length > 0 ? (
+              <ul className="working-file-list">
+                {workingFiles.map((file) => (
+                  <li className="working-file" key={file.name}>
+                    <span className="file-name" title={file.name}>{file.name}</span>
+                    {file.isSample && <span className="sample-file-tag">SAMPLE</span>}
+                    <button
+                      className="remove-file"
+                      type="button"
+                      aria-label={`Remove ${file.name} from this analysis`}
+                      title="Remove from this analysis only"
+                      disabled={loading}
+                      onClick={() => removeWorkingFile(file.name)}
+                    >
+                      ×
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="files-empty">No files loaded. Add .sql files or reset to the sample project.</p>
+            )}
+            {(fileIssues.length > 0 || fileNotices.length > 0) && (
+              <div className="file-feedback">
+                {fileIssues.map((issue, index) => (
+                  <p className="file-feedback-error" key={`issue-${index}`}>
+                    <strong>{issue.name}:</strong> {issue.message}
+                  </p>
+                ))}
+                {fileNotices.map((notice, index) => (
+                  <p className="file-feedback-notice" key={`notice-${index}`}>{notice}</p>
+                ))}
+              </div>
+            )}
+          </section>
 
           <div className="graph-toolbar">
             <div className="graph-title"><span className="grid-icon" aria-hidden="true">▦</span><strong>Dependency map</strong><span className="toolbar-divider" /><span>{procedureCount + tableCount} objects</span></div>
@@ -326,6 +563,12 @@ function App() {
                   onNodeSelect={setSelectedId}
                 />
               </ReactFlowProvider>
+            )}
+            {!loading && !error && workingFiles.length === 0 && (
+              <div className="graph-state empty-files-state">
+                <strong>No SQL files in this analysis</strong>
+                <span>Add supported .sql stored procedures or reset to the sample.</span>
+              </div>
             )}
           </div>
 
@@ -419,8 +662,17 @@ function App() {
                     </section>
                   ) : (
                     <div className="explanation-error">
-                      <strong>Procedure guide not ready</strong>
-                      <p>{result.explanation_error || 'The cached Gemini guide is not available for this procedure.'}</p>
+                      <strong>
+                        {result.explanation_pending?.includes(procedure.id)
+                          ? 'AI insights are being generated'
+                          : 'AI insights unavailable'}
+                      </strong>
+                      <p>
+                        {result.explanation_error
+                          || (result.explanation_pending?.includes(procedure.id)
+                            ? 'The graph and detected risks are ready while the procedure summary is generated.'
+                            : 'No cached explanation is available for this procedure.')}
+                      </p>
                     </div>
                   )}
                   <section className="detail-section risks-section">
@@ -455,7 +707,7 @@ function App() {
         </aside>
       </section>
 
-      <footer className="app-footer"><span>PIPELENS <i>·</i> SQL DEPENDENCY EXPLORER</span><span>LOCAL ANALYSIS <i>·</i> NO MODEL CALLS</span></footer>
+      <footer className="app-footer"><span>PIPELENS <i>·</i> SQL DEPENDENCY EXPLORER</span><span>LOCAL GRAPH <i>·</i> AI ONLY SUMMARIZES</span></footer>
     </main>
   )
 }

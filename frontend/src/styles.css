@@ -47,6 +47,31 @@ h1 { margin: 0; font: 700 26px 'Manrope', sans-serif; letter-spacing: 0; line-he
 .pipeline-counts strong { color: #243d33; font: 700 18px 'Manrope', sans-serif; }
 .pipeline-counts span { color: #7c8880; font-size: 11px; }
 .pipeline-counts i { height: 22px; width: 1px; background: #d9e0da; }
+.file-manager { margin: 0 0 14px; padding: 12px; border: 1px solid #dce4dd; border-radius: 7px; background: rgba(251, 252, 250, .88); }
+.files-toolbar, .file-actions { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.files-heading { display: flex; align-items: baseline; gap: 8px; min-width: 0; color: #344139; font-size: 11px; }
+.files-heading strong { font-weight: 700; }
+.files-heading span { color: #8a958e; font: 400 9px var(--mono); white-space: nowrap; }
+.file-actions { justify-content: flex-end; flex-wrap: wrap; }
+.file-action, .reset-action { min-height: 29px; display: inline-flex; align-items: center; justify-content: center; padding: 0 10px; border: 1px solid #cddbd1; border-radius: 5px; background: #f7faf7; color: #326b55; font-size: 10px; font-weight: 600; cursor: pointer; }
+.file-action { position: relative; overflow: hidden; }
+.file-action input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.file-action:focus-within { outline: 2px solid #559478; outline-offset: 2px; }
+.reset-action { border-color: #dce4dd; background: #fff; color: #65736a; }
+.file-action:hover, .reset-action:hover:not(:disabled) { background: #eaf3ed; }
+.file-action.is-disabled, .reset-action:disabled { opacity: .55; cursor: not-allowed; }
+.working-file-list { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 0; padding: 0; list-style: none; }
+.working-file { min-width: 0; max-width: 100%; display: inline-flex; align-items: center; gap: 6px; padding: 3px 4px 3px 8px; border: 1px solid #e2e8e2; border-radius: 5px; background: #fff; }
+.file-name { max-width: 220px; overflow: hidden; color: #5d6b62; font: 400 9px var(--mono); text-overflow: ellipsis; white-space: nowrap; }
+.sample-file-tag { color: #779080; font: 500 7px var(--mono); }
+.remove-file { width: 18px; height: 18px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 4px; background: transparent; color: #8d9991; font-size: 15px; line-height: 1; cursor: pointer; }
+.remove-file:hover:not(:disabled) { background: #f8e9e6; color: #a33e35; }
+.remove-file:disabled { opacity: .45; cursor: not-allowed; }
+.files-empty { margin: 10px 0 0; color: #89958d; font-size: 10px; }
+.file-feedback { display: grid; gap: 3px; margin-top: 9px; padding-top: 7px; border-top: 1px solid #e8ece8; }
+.file-feedback p { margin: 0; font-size: 9px; line-height: 1.45; overflow-wrap: anywhere; }
+.file-feedback-error { color: #a44d41; }
+.file-feedback-notice { color: #607966; }
 .graph-toolbar { min-height: 42px; display: flex; align-items: center; justify-content: space-between; padding: 0 14px; background: #fbfcfa; border: 1px solid #dce4dd; border-bottom: 0; border-radius: 7px 7px 0 0; }
 .graph-toolbar-right { display: flex; align-items: center; gap: 14px; }
 .graph-title { display: flex; align-items: center; gap: 9px; color: #7c8780; font-size: 11px; }
@@ -155,6 +180,8 @@ h1 { margin: 0; font: 700 26px 'Manrope', sans-serif; letter-spacing: 0; line-he
 .loader { width: 23px; height: 23px; border: 2px solid #dce8df; border-top-color: #3d8067; border-radius: 50%; animation: spin .8s linear infinite; }
 .error-state strong { color: #39463e; font: 700 16px 'Manrope', sans-serif; }
 .error-hint { color: #8d978f; font-size: 10px; }
+.empty-files-state strong { color: #39463e; font: 700 16px 'Manrope', sans-serif; }
+.empty-files-state span { color: #7d8981; font-size: 11px; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .app-footer { min-height: 35px; display: flex; align-items: center; justify-content: space-between; padding: 0 35px; color: #9ba49e; font: 400 8px var(--mono); letter-spacing: 0; }
 .app-footer i { padding: 0 4px; color: #c0c8c1; font-style: normal; }
@@ -186,6 +213,9 @@ h1 { margin: 0; font: 700 26px 'Manrope', sans-serif; letter-spacing: 0; line-he
   .pipeline-counts { align-self: flex-end; margin-top: -42px; }
   .pipeline-counts strong { font-size: 15px; }
   .pipeline-counts span { font-size: 9px; }
+  .files-toolbar { align-items: flex-start; flex-direction: column; }
+  .file-actions { width: 100%; justify-content: flex-start; }
+  .file-name { max-width: min(220px, 55vw); }
   .graph-frame { height: 52vh; min-height: 370px; max-height: 530px; }
   .graph-toolbar { padding: 0 10px; }
   .graph-toolbar-right { gap: 7px; }
