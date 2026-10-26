@@ -23,6 +23,16 @@ def build_pipeline_graph(procedures: list[dict[str, Any]]) -> tuple[nx.DiGraph, 
             graph.add_edge(procedure_id, table_id, type="write", confidence="parsed")
             edges.append({"from": procedure_id, "to": table, "type": "write", "confidence": "parsed"})
 
+        for called_procedure in procedure.get("called_procedures", []):
+            graph.add_node(called_procedure, kind="procedure")
+            graph.add_edge(procedure_id, called_procedure, type="call", confidence="parsed")
+            edges.append({
+                "from": procedure_id,
+                "to": called_procedure,
+                "type": "call",
+                "confidence": "parsed",
+            })
+
         for uncertain_edge in procedure["uncertain_edges"]:
             target = uncertain_edge["to"]
             target_id = f"uncertain:{target}"
@@ -42,6 +52,7 @@ def downstream_by_node(graph: nx.DiGraph) -> dict[str, list[str]]:
     downstream: dict[str, list[str]] = {}
     for node in sorted(graph.nodes):
         reachable = nx.descendants(graph, node)
+        reachable.discard(node)
         public_id = _public_node_id(graph, node)
         downstream[public_id] = sorted(_public_node_id(graph, reachable_node) for reachable_node in reachable)
     return downstream

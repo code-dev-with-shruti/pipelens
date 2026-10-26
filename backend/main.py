@@ -172,11 +172,17 @@ def analyze(req: AnalyzeRequest):
         for _, data in graph.nodes(data=True)
         if data["kind"] == "table"
     )
+    procedure_nodes = sorted(
+        node
+        for node, data in graph.nodes(data=True)
+        if data["kind"] == "procedure"
+    )
     for procedure in procedures:
         procedure["downstream"] = downstream[procedure["id"]]
 
     result = {
         "procedures": procedures,
+        "procedure_nodes": procedure_nodes,
         "tables": tables,
         "edges": edges,
         "downstream": downstream,

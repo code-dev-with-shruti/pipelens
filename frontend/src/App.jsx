@@ -17,39 +17,280 @@ const NODE_HEIGHT = 84
 const MAX_UPLOAD_BATCH = 15
 const MAX_SQL_CHARACTERS = 20_000
 
-async function requestAnalysis(files, source) {
-  const response = await fetch(`${API_URL}/analyze`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      source,
-      files: files.map(({ name, sql, isSample }) => ({
-        name,
-        sql,
-        use_cached_explanation: Boolean(isSample),
-      })),
-    }),
-  })
+async function requestAnalysis(files, source, onBackendResponse) {
+  let response
+  try {
+    response = await fetch(`${API_URL}/analyze`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        source,
+        files: files.map(({ name, sql, isSample }) => ({
+          name,
+          sql,
+          use_cached_explanation: Boolean(isSample),
+        })),
+      }),
+    })
+  } catch (error) {
+    onBackendResponse(false)
+    throw error
+  }
+  onBackendResponse(true)
   if (!response.ok) {
+    onBackendResponse(false)
     const failure = await response.json()
     throw new Error(failure.detail || 'The SQL analysis request did not complete.')
   }
   return response.json()
 }
 
-async function requestExplanations(files) {
-  const response = await fetch(`${API_URL}/explanations`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      files: files.map(({ name, sql }) => ({ name, sql })),
-    }),
-  })
+async function requestExplanations(files, onBackendResponse) {
+  let response
+  try {
+    response = await fetch(`${API_URL}/explanations`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        files: files.map(({ name, sql }) => ({ name, sql })),
+      }),
+    })
+  } catch (error) {
+    onBackendResponse(false)
+    throw error
+  }
+  onBackendResponse(true)
   if (!response.ok) {
+    onBackendResponse(false)
     const failure = await response.json()
     throw new Error(failure.detail || 'AI insights could not be generated.')
   }
   return response.json()
+}
+
+function xmlEscape(value) {
+  return String(value)
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&apos;')
+}
+
+function mermaidEscape(value) {
+  return String(value)
+    .replace(/[\r\n]+/g, ' ')
+    .replaceAll('"', "'")
+    .replaceAll('[', '(')
+    .replaceAll(']', ')')
+    .replaceAll('|', '/')
+}
+
+function downloadBlob(filename, blob) {
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  window.setTimeout(() => URL.revokeObjectURL(url), 0)
+}
+
+function dependencyGraphSvg(result, selectedId) {
+  const { nodes, edges } = makeGraph(result, null)
+  const nodeById = new Map(nodes.map((node) => [node.id, node]))
+  const procedureIds = new Set(result.procedure_nodes || result.procedures.map((item) => item.id))
+  const tableIds = new Set(result.tables || [])
+  const downstream = selectedId ? result.downstream?.[selectedId] || [] : []
+  const highlightedIds = new Set(selectedId ? [selectedId, ...downstream] : [])
+  const nodePublicId = (node) => publicNodeId(node)
+  const left = Math.min(...nodes.map((node) => node.position.x))
+  const top = Math.min(...nodes.map((node) => node.position.y))
+  const right = Math.max(...nodes.map((node) => node.position.x + NODE_WIDTH))
+  const bottom = Math.max(...nodes.map((node) => node.position.y + NODE_HEIGHT))
+  const padding = 44
+  const legendHeight = 54
+  const width = Math.max(right - left + padding * 2, 6 * 138 + padding * 2)
+  const height = bottom - top + padding * 2 + legendHeight
+  const offsetX = padding - left
+  const offsetY = padding - top
+  const colors = {
+    read: '#487f78',
+    write: '#708078',
+    call: '#718c42',
+    uncertain: '#bd6a3d',
+    accent: '#087b62',
+  }
+
+  const markerDefs = edges.map((edge, index) => {
+    const source = nodeById.get(edge.source)
+    const target = nodeById.get(edge.target)
+    const sourceRelevant = source && highlightedIds.has(nodePublicId(source))
+    const targetRelevant = target && highlightedIds.has(nodePublicId(target))
+    const color = sourceRelevant && targetRelevant ? colors.accent : colors[edge.data.edgeType]
+    return `<marker id="arrow-${index}" markerWidth="9" markerHeight="8" refX="8" refY="4" orient="auto" markerUnits="userSpaceOnUse"><path d="M0 0 L9 4 L0 8 Z" fill="${color}"/></marker>`
+  }).join('')
+
+  const edgeMarkup = edges.map((edge, index) => {
+    const source = nodeById.get(edge.source)
+    const target = nodeById.get(edge.target)
+    if (!source || !target) return ''
+    const sourcePublicId = nodePublicId(source)
+    const targetPublicId = nodePublicId(target)
+    const highlighted = highlightedIds.has(sourcePublicId) && highlightedIds.has(targetPublicId)
+    const color = highlighted ? colors.accent : colors[edge.data.edgeType]
+    const x1 = source.position.x + NODE_WIDTH + offsetX
+    const y1 = source.position.y + NODE_HEIGHT / 2 + offsetY
+    const x2 = target.position.x + offsetX
+    const y2 = target.position.y + NODE_HEIGHT / 2 + offsetY
+    const control = Math.max(36, (x2 - x1) / 2)
+    const label = edge.label
+    return `<g><path d="M ${x1} ${y1} C ${x1 + control} ${y1}, ${x2 - control} ${y2}, ${x2} ${y2}" fill="none" stroke="${color}" stroke-width="${highlighted ? 3 : 1.8}"${edge.data.dashed ? ' stroke-dasharray="7 5"' : ''} marker-end="url(#arrow-${index})"/><text x="${(x1 + x2) / 2}" y="${(y1 + y2) / 2 - 6}" text-anchor="middle" class="edge-label">${xmlEscape(label)}</text></g>`
+  }).join('')
+
+  const nodeMarkup = nodes.map((node) => {
+    const x = node.position.x + offsetX
+    const y = node.position.y + offsetY
+    const publicId = nodePublicId(node)
+    const highlighted = highlightedIds.has(publicId)
+    const selected = selectedId === publicId
+    const type = node.type === 'procedure' ? 'PROCEDURE' : node.type === 'table' ? 'TABLE' : 'UNRESOLVED'
+    const fill = node.type === 'procedure' ? '#fbfdfb' : node.type === 'table' ? '#f5f9f6' : '#fff8f3'
+    const stroke = highlighted ? colors.accent : node.type === 'uncertain' ? colors.uncertain : '#d1ded4'
+    const lines = String(node.data.label).match(/.{1,25}/g) || [String(node.data.label)]
+    const labelMarkup = lines.slice(0, 2).map((line, index) => (
+      `<tspan x="${x + 50}" dy="${index === 0 ? 0 : 17}">${xmlEscape(line.trim())}</tspan>`
+    )).join('')
+    return `<g><title>${xmlEscape(`${type}: ${node.data.label}`)}</title><rect x="${x}" y="${y}" width="${NODE_WIDTH}" height="${NODE_HEIGHT}" rx="8" fill="${fill}" stroke="${stroke}" stroke-width="${selected ? 3.5 : highlighted ? 2.6 : 1.4}"/><circle cx="${x + 25}" cy="${y + 42}" r="13" fill="${node.type === 'procedure' ? '#e5f1eb' : node.type === 'table' ? '#edf2e8' : '#fbf0e8'}"/><text x="${x + 25}" y="${y + 46}" text-anchor="middle" class="node-symbol">${node.type === 'procedure' ? 'P' : node.type === 'table' ? 'T' : '?'}</text><text x="${x + 50}" y="${y + 30}" class="node-kind">${type}</text><text x="${x + 50}" y="${y + 50}" class="node-label">${labelMarkup}</text></g>`
+  }).join('')
+
+  const legendY = bottom + offsetY + 27
+  const legendMarkup = [
+    ['Procedure', '#fbfdfb', '#d1ded4'],
+    ['Table', '#f5f9f6', '#d1ded4'],
+    ['Reads', 'none', colors.read],
+    ['Writes', 'none', colors.write],
+    ['Calls', 'none', colors.call],
+    ['Uncertain', 'none', colors.uncertain],
+  ].map(([label, fill, stroke], index) => {
+    const x = padding + index * 138
+    const symbol = fill === 'none'
+      ? `<line x1="${x}" y1="${legendY}" x2="${x + 22}" y2="${legendY}" stroke="${stroke}" stroke-width="2"${label === 'Uncertain' ? ' stroke-dasharray="5 4"' : ''}/>`
+      : `<rect x="${x}" y="${legendY - 8}" width="19" height="16" rx="3" fill="${fill}" stroke="${stroke}"/>`
+    return `${symbol}<text x="${x + 27}" y="${legendY + 4}" class="legend-label">${label}</text>`
+  }).join('')
+
+  const mermaidIds = new Map(nodes.map((node, index) => [node.id, `N${index}`]))
+  const mermaidNodes = nodes.map((node) => (
+    `${mermaidIds.get(node.id)}["${mermaidEscape(`${node.type}: ${node.data.label}`)}"]`
+  ))
+  const mermaidEdges = edges.map((edge) => {
+    const label = edge.label
+    const connector = edge.data.dashed ? '-.->' : '-->'
+    return `${mermaidIds.get(edge.source)} ${connector}|${mermaidEscape(label)}| ${mermaidIds.get(edge.target)}`
+  })
+  const defs = `<defs>${markerDefs}</defs>`
+  const style = `<style>.node-kind{font:500 8px Arial,sans-serif;fill:#849088;letter-spacing:1px}.node-label{font:600 12px Arial,sans-serif;fill:#26362e}.node-symbol{font:700 12px Arial,sans-serif;fill:#35634e}.edge-label{font:600 10px Arial,sans-serif;fill:#536259;paint-order:stroke;stroke:#f8faf7;stroke-width:4px;stroke-linejoin:round}.legend-label{font:10px Arial,sans-serif;fill:#536259}</style>`
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img" aria-label="Full SQL dependency graph">${defs}${style}<rect width="100%" height="100%" fill="#f8faf7"/>${edgeMarkup}${nodeMarkup}<line x1="${padding}" y1="${legendY + 21}" x2="${width - padding}" y2="${legendY + 21}" stroke="#dfe5df"/>${legendMarkup}</svg>`
+  return { svg, mermaidNodes, mermaidEdges, procedureIds, tableIds }
+}
+
+function downloadOnboardingMarkdown(result, selectedId) {
+  if (!result) return
+  const procedures = result.procedures || []
+  const { svg, mermaidNodes, mermaidEdges, procedureIds, tableIds } = dependencyGraphSvg(result, selectedId)
+  const riskLevels = ['high', 'medium', 'low']
+  const downstreamFor = (procedureId) => result.downstream?.[procedureId] || []
+  const startProcedure = [...procedures].sort((left, right) => (
+    downstreamFor(right.id).length - downstreamFor(left.id).length || left.id.localeCompare(right.id)
+  ))[0]
+  const startImpact = startProcedure ? downstreamFor(startProcedure.id) : []
+  const lines = [
+    '# Pipeline onboarding overview',
+    '',
+    `- Procedures: ${procedures.length}`,
+    `- Tables: ${(result.tables || []).length}`,
+    `- Uncertain edges: ${(result.edges || []).filter((edge) => edge.confidence === 'uncertain').length}`,
+    '',
+    '## Risk summary',
+    '',
+    '| Severity | Count | Affected procedures |',
+    '|---|---:|---|',
+    ...riskLevels.map((severity) => {
+      const affected = procedures.filter((procedure) => (
+        procedure.risks.some((risk) => risk.severity === severity)
+      ))
+      const count = procedures.reduce(
+        (total, procedure) => total + procedure.risks.filter((risk) => risk.severity === severity).length,
+        0,
+      )
+      return `| ${severity.toUpperCase()} | ${count} | ${affected.length ? affected.map((item) => `\`${item.id}\``).join(', ') : 'None'} |`
+    }),
+    '',
+    startProcedure
+      ? `**Start here:** \`${startProcedure.id}\` has the largest downstream impact (${startImpact.filter((id) => procedureIds.has(id)).length} procedures and ${startImpact.filter((id) => tableIds.has(id)).length} tables).`
+      : '**Start here:** No procedures are loaded.',
+    '',
+    '## Uncertain dependency',
+    '',
+    ...(result.edges.some((edge) => edge.confidence === 'uncertain')
+      ? [...new Set(result.edges.filter((edge) => edge.confidence === 'uncertain').map((edge) => edge.from))]
+        .map((id) => `\`${id}\` uses dynamic SQL, so its runtime target cannot be resolved statically and is shown as an unknown dependency.`)
+      : ['No uncertain dependencies were detected.']),
+    '',
+    '## Procedures',
+    '',
+  ]
+
+  for (const procedure of procedures) {
+    const downstream = downstreamFor(procedure.id)
+    const downstreamProcedures = downstream.filter((id) => procedureIds.has(id))
+    const downstreamTables = downstream.filter((id) => tableIds.has(id))
+    lines.push(
+      `### ${procedure.id}`,
+      '',
+      `**Summary:** ${procedure.summary || 'AI summary is unavailable.'}`,
+      '',
+      `**If this fails:** Blocks ${downstreamProcedures.length} ${downstreamProcedures.length === 1 ? 'procedure' : 'procedures'} and ${downstreamTables.length} ${downstreamTables.length === 1 ? 'table' : 'tables'}.`,
+      '',
+      '**Steps:**',
+      ...(procedure.steps?.length
+        ? procedure.steps.map((step, index) => `${index + 1}. ${step}`)
+        : ['1. No steps available.']),
+      '',
+      '**Reads:**',
+      ...(procedure.reads?.length ? procedure.reads.map((table) => `- ${table}`) : ['- None']),
+      '',
+      '**Writes:**',
+      ...(procedure.writes?.length ? procedure.writes.map((table) => `- ${table}`) : ['- None']),
+      '',
+      '**Detected risks:**',
+      ...(procedure.risks?.length
+        ? procedure.risks.map((risk) => `- **${risk.severity.toUpperCase()} — ${risk.title}:** ${risk.detail}`)
+        : ['- None detected.']),
+      '',
+      '**Downstream procedures:**',
+      ...(downstreamProcedures.length ? downstreamProcedures.map((item) => `- ${item}`) : ['- None']),
+      '',
+      '**Downstream tables:**',
+      ...(downstreamTables.length ? downstreamTables.map((item) => `- ${item}`) : ['- None']),
+      '',
+    )
+  }
+
+  lines.push(
+    '## Dependency graph',
+    '',
+    '```mermaid',
+    'flowchart LR',
+    ...mermaidNodes.map((line) => `  ${line}`),
+    ...mermaidEdges.map((line) => `  ${line}`),
+    '```',
+    '',
+  )
+  downloadBlob('pipelens-onboarding.md', new Blob([lines.join('\n')], { type: 'text/markdown;charset=utf-8' }))
+  downloadBlob('pipelens-dependency-graph.svg', new Blob([svg], { type: 'image/svg+xml;charset=utf-8' }))
 }
 
 function ProcedureNode({ data }) {
@@ -105,6 +346,12 @@ function makeGraph(result, selectedId) {
     : null
   const procedures = result.procedures || []
   const proceduresById = new Map(procedures.map((procedure) => [procedure.id, procedure]))
+  const procedureNodeIds = new Set(
+    result.procedure_nodes
+      || [...procedures.map((procedure) => procedure.id), ...(result.edges || [])
+        .filter((edge) => edge.type === 'call')
+        .map((edge) => edge.to)],
+  )
   const nodes = []
 
   for (const procedure of procedures) {
@@ -117,6 +364,21 @@ function makeGraph(result, selectedId) {
         label: procedure.id.replace(/^dbo\./, ''),
         active: procedure.id === selectedId,
         dimmed: Boolean(reachable && !reachable.has(procedure.id)),
+      },
+    })
+  }
+
+  for (const procedureId of procedureNodeIds) {
+    if (proceduresById.has(procedureId)) continue
+    graph.setNode(procedureId, { width: NODE_WIDTH, height: NODE_HEIGHT })
+    nodes.push({
+      id: procedureId,
+      type: 'procedure',
+      position: { x: 0, y: 0 },
+      data: {
+        label: procedureId.replace(/^dbo\./, ''),
+        active: procedureId === selectedId,
+        dimmed: Boolean(reachable && !reachable.has(procedureId)),
       },
     })
   }
@@ -137,8 +399,12 @@ function makeGraph(result, selectedId) {
   }
 
   const edges = (result.edges || []).map((edge, index) => {
-    const source = proceduresById.has(edge.from) ? edge.from : `table:${edge.from}`
-    const target = edge.confidence === 'uncertain' ? `uncertain:${edge.to}` : proceduresById.has(edge.to) ? edge.to : `table:${edge.to}`
+    const source = procedureNodeIds.has(edge.from) ? edge.from : `table:${edge.from}`
+    const target = edge.confidence === 'uncertain'
+      ? `uncertain:${edge.to}`
+      : procedureNodeIds.has(edge.to)
+        ? edge.to
+        : `table:${edge.to}`
     if (edge.confidence === 'uncertain' && !graph.hasNode(target)) {
       graph.setNode(target, { width: NODE_WIDTH, height: NODE_HEIGHT })
       nodes.push({
@@ -160,14 +426,23 @@ function makeGraph(result, selectedId) {
         ? '#bd6a3d'
         : edge.type === 'read'
           ? '#487f78'
+          : edge.type === 'call'
+            ? '#718c42'
           : '#708078'
     return {
       id: `edge-${index}`,
       source,
       target,
-      label: edge.type === 'read' ? 'reads' : edge.type === 'write' ? 'writes' : 'uncertain',
+      label: edge.type === 'read'
+        ? 'reads'
+        : edge.type === 'write'
+          ? 'writes'
+          : edge.type === 'call'
+            ? 'calls'
+            : 'uncertain',
       type: 'smoothstep',
       animated: edge.confidence === 'uncertain',
+      data: { edgeType: edge.confidence === 'uncertain' ? 'uncertain' : edge.type, dashed: edge.confidence === 'uncertain' },
       style: {
         stroke: edgeColor,
         strokeWidth: highlighted ? 3 : 1.8,
@@ -246,6 +521,7 @@ function App() {
   const [selectedId, setSelectedId] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [backendReachable, setBackendReachable] = useState(true)
   const [fileIssues, setFileIssues] = useState([])
   const [fileNotices, setFileNotices] = useState([])
   const analysisSequence = useRef(0)
@@ -261,7 +537,7 @@ function App() {
     setLoading(true)
     setError('')
     try {
-      const analysis = await requestAnalysis(files, source)
+      const analysis = await requestAnalysis(files, source, setBackendReachable)
       if (sequence !== analysisSequence.current) return false
       const invalidNames = new Set((analysis.file_errors || []).map((item) => item.name))
       setWorkingFiles(files.filter((file) => !invalidNames.has(file.name)))
@@ -272,7 +548,7 @@ function App() {
           .filter((procedure) => pending.has(procedure.id))
           .map((procedure) => files.find((file) => !file.isSample && file.name === procedure.file))
           .filter(Boolean)
-        void requestExplanations(pendingFiles)
+        void requestExplanations(pendingFiles, setBackendReachable)
           .then(({ procedures: generated }) => {
             if (sequence !== analysisSequence.current) return
             setResult((current) => current && ({
@@ -305,6 +581,7 @@ function App() {
       return true
     } catch (requestError) {
       if (sequence === analysisSequence.current) {
+        setBackendReachable(false)
         setError(requestError.message || 'PipeLens could not connect to the backend.')
       }
       return false
@@ -320,14 +597,22 @@ function App() {
     setFileIssues([])
     setFileNotices([])
     try {
-      const response = await fetch(`${API_URL}/sample`)
+      let response
+      try {
+        response = await fetch(`${API_URL}/sample`)
+      } catch (requestError) {
+        setBackendReachable(false)
+        throw requestError
+      }
+      setBackendReachable(true)
       if (!response.ok) {
+        setBackendReachable(false)
         const failure = await response.json()
         throw new Error(failure.detail || 'Could not load the bundled sample project.')
       }
       const sample = await response.json()
       const sampleFiles = sample.files.map((file) => ({ ...file, isSample: true }))
-      const analysis = await requestAnalysis(sampleFiles, 'sample')
+      const analysis = await requestAnalysis(sampleFiles, 'sample', setBackendReachable)
       if (sequence !== analysisSequence.current) return
       setWorkingFiles(sampleFiles)
       setResult(analysis)
@@ -336,6 +621,7 @@ function App() {
       setFileNotices(analysis.warnings || [])
     } catch (requestError) {
       if (sequence === analysisSequence.current) {
+        setBackendReachable(false)
         setError(requestError.message || 'PipeLens could not connect to the backend.')
       }
     } finally {
@@ -432,6 +718,13 @@ function App() {
   const procedureCount = result?.procedures.length || 0
   const tableCount = result?.tables.length || 0
   const uncertainCount = result?.edges.filter((edge) => edge.confidence === 'uncertain').length || 0
+  const verifiedSample = Boolean(
+    result?.accuracy && workingFiles.length === 7 && workingFiles.every((file) => file.isSample),
+  )
+  const procedureIds = new Set(result?.procedure_nodes || result?.procedures.map((item) => item.id) || [])
+  const tableIds = new Set(result?.tables || [])
+  const downstreamProcedureCount = downstream.filter((id) => procedureIds.has(id)).length
+  const downstreamTableCount = downstream.filter((id) => tableIds.has(id)).length
 
   return (
     <main className="app-shell">
@@ -451,7 +744,20 @@ function App() {
           <span>{workingFiles.length ? 'IN-MEMORY SET' : 'EMPTY ANALYSIS'}</span>
         </div>
         <div className="topbar-right">
-          <span className="status-label"><span className="status-check">✓</span> Parser connected</span>
+          <button
+            className="export-button"
+            type="button"
+            disabled={!workingFiles.length || !result}
+            onClick={() => downloadOnboardingMarkdown(result, selectedId)}
+          >
+            Export
+          </button>
+          <span
+            className={`backend-status${backendReachable === true ? ' is-connected' : backendReachable === false ? ' is-unreachable' : ''}`}
+            title={backendReachable === false ? 'Backend unreachable' : 'Parser connected'}
+            aria-label={backendReachable === false ? 'Backend unreachable' : 'Parser connected'}
+            role="img"
+          />
         </div>
       </header>
 
@@ -532,13 +838,12 @@ function App() {
           <div className="graph-toolbar">
             <div className="graph-title"><span className="grid-icon" aria-hidden="true">▦</span><strong>Dependency map</strong><span className="toolbar-divider" /><span>{procedureCount + tableCount} objects</span></div>
             <div className="graph-toolbar-right">
-              {result?.accuracy && (
+              {verifiedSample && (
                 <span
                   className="accuracy-badge"
                   title={`${result.accuracy.matched} of ${result.accuracy.expected} expected relationships matched; precision ${(result.accuracy.precision * 100).toFixed(0)}%, recall ${(result.accuracy.recall * 100).toFixed(0)}%.`}
                 >
-                  <span>GROUND TRUTH</span>
-                  <strong>F1 {(result.accuracy.f1 * 100).toFixed(0)}%</strong>
+                  <strong>Verified on sample project: F1 {(result.accuracy.f1 * 100).toFixed(0)}%</strong>
                 </span>
               )}
               <span className="layout-tag"><span className="layout-arrow">→</span> LEFT TO RIGHT</span>
@@ -675,6 +980,9 @@ function App() {
                       </p>
                     </div>
                   )}
+                  <p className="failure-impact">
+                    <strong>If this fails:</strong> Blocks {downstreamProcedureCount} {downstreamProcedureCount === 1 ? 'procedure' : 'procedures'} and {downstreamTableCount} {downstreamTableCount === 1 ? 'table' : 'tables'} downstream.
+                  </p>
                   <section className="detail-section risks-section">
                     <div className="section-heading"><h3>Detected risks</h3><span className="count-pill">{procedure.risks.length}</span></div>
                     {procedure.risks.length ? (

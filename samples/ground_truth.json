@@ -42,5 +42,15 @@
       "calls": [],
       "uncertain": false
     }
+  },
+  "downstream_counts": {
+    "dbo.load_invoices": {
+      "procedures": 4,
+      "tables": 7
+    },
+    "dbo.clean_invoice_records": {
+      "procedures": 3,
+      "tables": 4
+    }
   }
 }

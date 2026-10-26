@@ -74,8 +74,8 @@ Build mode: learn
   Why now: The export and polish make the single-minute demo story strong.
   PRD ref: `prd.md > Export onboarding doc`, `prd.md > Loading and error states`
   Spec ref: `spec.md > Components`, `spec.md > Important Failure Modes`
-  Build: Add export logic, loading/error states, sample project defaults, and clear UI polish.
-  Verify (mechanical): Run the app and export a sample document successfully.
+  Build: Add a header export button that downloads the current full-pipeline Markdown overview; keep parser connectivity in a status dot; label accuracy as verified only on the unchanged sample set; show deterministic downstream procedure/table counts in the procedure detail and focus summaries on business purpose.
+  Verify (mechanical): Run backend tests and frontend build; export sample and custom analyses and confirm counts, all procedure details, risks, and downstream impact match the current graph; confirm the status dot tracks backend reachability and custom files hide the sample verification badge.
   Learner check: Run the full one-minute demo and confirm the story is clear and quick.
   Commit: `Finalize export and polish`
 
@@ -105,3 +105,4 @@ Activity mode: [fill in after build]
 - The learner confirmed the initial graph and downstream behavior, closing slice 3. Slice 4 now includes the specifically requested readability refinement and Gemini/deterministic-risk detail behavior; slice 5 displays its ground-truth result in the UI.
 - The learner specified working-set behavior: uploads merge, same filename replaces, duplicate procedure IDs keep the latest definition with a warning, remove affects analysis only, reset restores the seven-file sample, and nothing persists. Added this as slice 6 before export/polish.
 - Uploaded SQL graph analysis now returns before a separate Gemini explanation request, so graph and deterministic risks stay available when Gemini is slow or unavailable.
+- The learner requested a current-analysis Markdown export, a parser connectivity dot, honest sample-only F1 labeling, and business-purpose summaries with a deterministic downstream failure impact line.

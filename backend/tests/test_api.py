@@ -81,6 +81,15 @@ def test_analyze_returns_deterministic_downstream_and_uncertain_edges(monkeypatc
     assert "dbo.nightly_cleanup" not in load_downstream
     assert "dbo.dynamic_rate_refresh" not in load_downstream
     assert "dbo.build_monthly_report" in result["downstream"]["dbo.payments"]
+    assert "dbo.clean_invoice_records" in load_downstream
+    assert {
+        "from": "dbo.clean_invoice_records",
+        "to": "dbo.reconcile_payments",
+        "type": "call",
+        "confidence": "parsed",
+    } in result["edges"]
+    assert "dbo.reconcile_payments" in result["downstream"]["dbo.clean_invoice_records"]
+    assert "dbo.build_monthly_report" in result["downstream"]["dbo.reconcile_payments"]
 
     uncertain_edges = [edge for edge in result["edges"] if edge["confidence"] == "uncertain"]
     assert uncertain_edges == [{

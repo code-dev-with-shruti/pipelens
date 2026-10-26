@@ -44,8 +44,12 @@ def generate_explanations(procedures: list[dict[str, Any]]) -> dict[str, dict[st
             config=types.GenerateContentConfig(
                 system_instruction=(
                     "Write concise, factual procedure summaries and ordered steps using only "
-                    "the provided parsed relationships. Do not infer or add graph edges, risks, "
-                    "or SQL behavior that is not supported by the supplied data. Return only "
+                    "the provided parsed relationships. Lead each summary with the procedure's "
+                    "business purpose and why it matters to the workflow; use procedure, table, "
+                    "and called-procedure names as evidence, and do not merely list reads and writes. "
+                    "If purpose is unclear, describe the supported data-flow role without inventing "
+                    "business facts. Do not infer or add graph edges, risks, or SQL behavior that "
+                    "is not supported by the supplied data. Return only "
                     'valid JSON with shape {"procedures":{"dbo.name":{"summary":"...",'
                     '"steps":["..."]}}}.'
                 ),

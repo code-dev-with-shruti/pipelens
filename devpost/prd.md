@@ -12,11 +12,11 @@ Source: scope.md > The Unique Kernel, The Core Loop, What "Working" Looks Like, 
 ## The Core Journey
 
 1. The user opens the app and sees a clean starting surface with a sample project loaded by default.
-2. The app displays an interactive graph of procedures and tables. Solid arrows represent parser-confirmed reads and writes; dashed arrows represent uncertain edges, such as dynamic SQL or fallback inference.
+2. The app displays an interactive graph of procedures and tables. Solid arrows represent parser-confirmed reads, writes, and direct procedure calls; dashed arrows represent uncertain edges, such as dynamic SQL.
 3. The user clicks a procedure, such as load_invoices, and the graph immediately highlights the procedure, the tables it reads and writes, and the downstream procedures and reports affected by it.
 4. A side panel updates with the procedure summary, ordered steps, and severity-tagged risks such as missing error handling or an unfiltered delete.
 5. The user can see how one failure ripples through the pipeline and understand what is impacted without reading raw SQL.
-6. The user exports the output as a Markdown onboarding document for the whole pipeline.
+6. The user exports a Markdown onboarding document and companion SVG snapshot for the whole pipeline.
 
 Success is defined by this moment: a newcomer understands the system at a glance and can answer “what breaks if this fails?” within a minute.
 
@@ -48,7 +48,7 @@ The user can load a sample project or upload a small set of SQL files. The app t
 - Provide “Reset to sample” to restore the original seven files. Removing every file shows an empty state that invites upload or reset. Refreshing the page starts over with the sample; no project history is persisted.
 - Accept `.sql` files only, up to 15 selected at a time and 20,000 characters per file. Explain invalid files individually while continuing to analyze valid files.
 - The app shows procedures as nodes and tables as nodes.
-- Edges show read and write relationships.
+- Edges show read, write, and direct procedure-call relationships.
 - Confirmed edges are solid; uncertain edges are dashed.
 - The graph is interactive enough for a person to inspect the pattern and focus on one area.
 
@@ -66,7 +66,9 @@ When the user clicks a procedure or table, the app highlights the downstream imp
 When a procedure is selected, the app presents an immediate summary and supporting detail.
 
 - Plain-English summary in a few sentences.
+- The summary leads with business purpose and explains why the procedure matters to the workflow, without claiming facts not supported by parsed data.
 - Ordered steps describing the procedure’s flow.
+- A deterministic “If this fails” impact line counts downstream procedures and tables.
 - Reads and writes listed in a structured format.
 - Risk list with severity labels.
 
@@ -86,10 +88,16 @@ Gemini writes only the plain-English summary and ordered steps from parser-deriv
 
 ### Export onboarding doc
 
-The user can export the pipeline analysis as a Markdown document for onboarding or handoff.
+The user can export the current pipeline analysis as a Markdown document and companion SVG for onboarding or handoff.
 
-- The export includes the pipeline overview and the selected procedure details.
+- The header button is labeled “Export” and downloads the Markdown and SVG files from one click.
+- Markdown contains procedure, table, and uncertain-edge counts; a severity summary with affected procedures; the procedure with the largest downstream impact; details for every procedure including summary, ordered steps, reads, writes, severity-tagged risks, “If this fails” counts, and separate downstream procedure/table lists; a note explaining unresolved dynamic SQL; and a Mermaid flowchart generated from graph edges.
+- The companion SVG shows the entire graph at full opacity with a legend. If a node is selected, it outlines the selected node and downstream path in the accent color.
+- The export is generated in the browser from the current analysis, including the current in-memory file set.
+- The export button is disabled when no files are loaded.
 - The document is useful to a teammate who needs a readable map of the system.
+
+The ground-truth F1 badge is labeled as verified on the sample project and appears only for the unchanged bundled sample set.
 
 ### Loading and error states
 
@@ -99,6 +107,7 @@ The app handles empty, invalid, oversized, or failed inputs in a readable way.
 - Uploaded graph analysis and deterministic risks appear before any live AI explanation request completes.
 - Empty input produces a clear explanation.
 - Invalid files or API issues show a human-readable failure.
+- A header status dot shows parser connectivity; it turns red with a “Backend unreachable” tooltip when an API request cannot reach the backend.
 - If an uploaded file has an unavailable AI explanation, its parsed graph and deterministic risks remain usable.
 
 ## States and Boundaries
