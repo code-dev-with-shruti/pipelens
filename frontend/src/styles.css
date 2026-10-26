@@ -78,8 +78,10 @@ h1 { margin: 0; font: 700 26px 'Manrope', sans-serif; letter-spacing: 0; line-he
 .file-feedback-notice { color: #607966; }
 .graph-toolbar { min-height: 42px; display: flex; align-items: center; justify-content: space-between; padding: 0 14px; background: #fbfcfa; border: 1px solid #dce4dd; border-bottom: 0; border-radius: 7px 7px 0 0; }
 .graph-toolbar-right { display: flex; align-items: center; gap: 14px; }
+.graph-toolbar-main { display: flex; align-items: center; gap: 12px; min-width: 0; }
 .graph-title { display: flex; align-items: center; gap: 9px; color: #7c8780; font-size: 11px; }
 .graph-title strong { color: #334139; font-size: 12px; font-weight: 600; }
+.graph-instructions { color: #69766e; font-size: 10px; line-height: 1.35; }
 .grid-icon { color: #3a8067; font-size: 16px; }
 .toolbar-divider { height: 14px; width: 1px; background: #dce2dc; margin: 0 2px; }
 .layout-tag { display: flex; gap: 6px; align-items: center; font: 500 9px var(--mono); color: #89938c; }
@@ -132,6 +134,7 @@ h1 { margin: 0; font: 700 26px 'Manrope', sans-serif; letter-spacing: 0; line-he
 .selection-glyph { width: 35px; height: 35px; border-radius: 8px; font-size: 12px; }
 .selection-kind { color: #8a958e; font: 500 9px var(--mono); }
 .selected-entity h2 { margin: 3px 0 0; color: #26362e; font: 700 17px 'Manrope', sans-serif; overflow-wrap: anywhere; }
+.object-caption { max-width: 250px; margin: 5px 0 0; color: #66736b; font-size: 10px; line-height: 1.45; overflow-wrap: anywhere; }
 .file-label { display: inline-block; margin-top: 4px; color: #8a958e; font: 400 9px var(--mono); }
 .detail-section { padding: 15px 0 14px; border-top: 1px solid #e8ece8; }
 .section-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
@@ -227,6 +230,7 @@ h1 { margin: 0; font: 700 26px 'Manrope', sans-serif; letter-spacing: 0; line-he
   .file-name { max-width: min(220px, 55vw); }
   .graph-frame { height: 52vh; min-height: 370px; max-height: 530px; }
   .graph-toolbar { padding: 0 10px; }
+  .graph-toolbar-main { align-items: flex-start; flex-direction: column; gap: 3px; }
   .graph-toolbar-right { gap: 7px; }
   .graph-title { gap: 6px; }
   .graph-title > span:last-child { display: none; }

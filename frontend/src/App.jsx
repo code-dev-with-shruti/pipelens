@@ -97,11 +97,55 @@ function downloadBlob(filename, blob) {
   window.setTimeout(() => URL.revokeObjectURL(url), 0)
 }
 
+function firstSentence(summary) {
+  const sentence = String(summary || '').trim().match(/^.*?[.!?](?=\s|$)/)
+  return sentence ? sentence[0] : String(summary || '').trim()
+}
+
+function deterministicProcedureCaption(procedure) {
+  const reads = procedure.reads?.length || 0
+  const writes = procedure.writes?.length || 0
+  return `Reads ${reads} ${reads === 1 ? 'table' : 'tables'}, writes ${writes} ${writes === 1 ? 'table' : 'tables'}.`
+}
+
+function procedureCaption(procedure) {
+  const purpose = procedure.summary
+    ? firstSentence(procedure.summary)
+    : deterministicProcedureCaption(procedure)
+  const usesDynamicSql = procedure.has_dynamic_sql
+    || procedure.uncertain_edges?.length > 0
+  return usesDynamicSql
+    ? `${purpose} Uses dynamic SQL, so some dependencies are unknown.`
+    : purpose
+}
+
+function tableCaptions(result) {
+  const captions = new Map()
+  for (const table of result.tables || []) {
+    const writers = [...new Set((result.edges || [])
+      .filter((edge) => edge.type === 'write' && edge.to === table)
+      .map((edge) => edge.from))].sort()
+    const readers = [...new Set((result.edges || [])
+      .filter((edge) => edge.type === 'read' && edge.from === table)
+      .map((edge) => edge.to))].sort()
+    const writerCaption = writers.length
+      ? `Written by ${writers.join(', ')}.`
+      : 'Source table: not written by any procedure.'
+    const readerCaption = readers.length
+      ? `Read by ${readers.join(', ')}.`
+      : 'Not read by any procedure.'
+    captions.set(table, `${writerCaption} ${readerCaption}`)
+  }
+  return captions
+}
+
 function dependencyGraphSvg(result, selectedId) {
   const { nodes, edges } = makeGraph(result, null)
   const nodeById = new Map(nodes.map((node) => [node.id, node]))
   const procedureIds = new Set(result.procedure_nodes || result.procedures.map((item) => item.id))
   const tableIds = new Set(result.tables || [])
+  const proceduresById = new Map(result.procedures.map((procedure) => [procedure.id, procedure]))
+  const captionsByTable = tableCaptions(result)
   const downstream = selectedId ? result.downstream?.[selectedId] || [] : []
   const highlightedIds = new Set(selectedId ? [selectedId, ...downstream] : [])
   const nodePublicId = (node) => publicNodeId(node)
@@ -162,7 +206,10 @@ function dependencyGraphSvg(result, selectedId) {
     const labelMarkup = lines.slice(0, 2).map((line, index) => (
       `<tspan x="${x + 50}" dy="${index === 0 ? 0 : 17}">${xmlEscape(line.trim())}</tspan>`
     )).join('')
-    return `<g><title>${xmlEscape(`${type}: ${node.data.label}`)}</title><rect x="${x}" y="${y}" width="${NODE_WIDTH}" height="${NODE_HEIGHT}" rx="8" fill="${fill}" stroke="${stroke}" stroke-width="${selected ? 3.5 : highlighted ? 2.6 : 1.4}"/><circle cx="${x + 25}" cy="${y + 42}" r="13" fill="${node.type === 'procedure' ? '#e5f1eb' : node.type === 'table' ? '#edf2e8' : '#fbf0e8'}"/><text x="${x + 25}" y="${y + 46}" text-anchor="middle" class="node-symbol">${node.type === 'procedure' ? 'P' : node.type === 'table' ? 'T' : '?'}</text><text x="${x + 50}" y="${y + 30}" class="node-kind">${type}</text><text x="${x + 50}" y="${y + 50}" class="node-label">${labelMarkup}</text></g>`
+    const caption = node.type === 'procedure'
+      ? procedureCaption(proceduresById.get(publicId) || { reads: [], writes: [] })
+      : node.type === 'table' ? captionsByTable.get(publicId) : node.data.label
+    return `<g><title>${xmlEscape(caption || `${type}: ${node.data.label}`)}</title><rect x="${x}" y="${y}" width="${NODE_WIDTH}" height="${NODE_HEIGHT}" rx="8" fill="${fill}" stroke="${stroke}" stroke-width="${selected ? 3.5 : highlighted ? 2.6 : 1.4}"/><circle cx="${x + 25}" cy="${y + 42}" r="13" fill="${node.type === 'procedure' ? '#e5f1eb' : node.type === 'table' ? '#edf2e8' : '#fbf0e8'}"/><text x="${x + 25}" y="${y + 46}" text-anchor="middle" class="node-symbol">${node.type === 'procedure' ? 'P' : node.type === 'table' ? 'T' : '?'}</text><text x="${x + 50}" y="${y + 30}" class="node-kind">${type}</text><text x="${x + 50}" y="${y + 50}" class="node-label">${labelMarkup}</text></g>`
   }).join('')
 
   const legendY = bottom + offsetY + 27
@@ -206,6 +253,7 @@ function downloadOnboardingMarkdown(result, selectedId) {
     downstreamFor(right.id).length - downstreamFor(left.id).length || left.id.localeCompare(right.id)
   ))[0]
   const startImpact = startProcedure ? downstreamFor(startProcedure.id) : []
+  const captionsByTable = tableCaptions(result)
   const lines = [
     '# Pipeline onboarding overview',
     '',
@@ -239,9 +287,18 @@ function downloadOnboardingMarkdown(result, selectedId) {
         .map((id) => `\`${id}\` uses dynamic SQL, so its runtime target cannot be resolved statically and is shown as an unknown dependency.`)
       : ['No uncertain dependencies were detected.']),
     '',
+  ]
+
+  lines.push(
+    '## Object index',
+    '',
+    '| Table | Caption |',
+    '|---|---|',
+    ...(result.tables || []).map((table) => `| \`${table}\` | ${captionsByTable.get(table)} |`),
+    '',
     '## Procedures',
     '',
-  ]
+  )
 
   for (const procedure of procedures) {
     const downstream = downstreamFor(procedure.id)
@@ -249,6 +306,8 @@ function downloadOnboardingMarkdown(result, selectedId) {
     const downstreamTables = downstream.filter((id) => tableIds.has(id))
     lines.push(
       `### ${procedure.id}`,
+      '',
+      `**Purpose:** ${procedureCaption(procedure)}`,
       '',
       `**Summary:** ${procedure.summary || 'AI summary is unavailable.'}`,
       '',
@@ -295,7 +354,7 @@ function downloadOnboardingMarkdown(result, selectedId) {
 
 function ProcedureNode({ data }) {
   return (
-    <div className={`graph-node procedure-node ${data.active ? 'is-active' : ''} ${data.dimmed ? 'is-dimmed' : ''}`}>
+    <div className={`graph-node procedure-node ${data.active ? 'is-active' : ''} ${data.dimmed ? 'is-dimmed' : ''}`} title={data.caption}>
       <Handle type="target" position={Position.Left} />
       <span className="node-symbol procedure-symbol" aria-hidden="true">P</span>
       <span className="node-copy">
@@ -309,7 +368,7 @@ function ProcedureNode({ data }) {
 
 function TableNode({ data }) {
   return (
-    <div className={`graph-node table-node ${data.active ? 'is-active' : ''} ${data.dimmed ? 'is-dimmed' : ''}`}>
+    <div className={`graph-node table-node ${data.active ? 'is-active' : ''} ${data.dimmed ? 'is-dimmed' : ''}`} title={data.caption}>
       <Handle type="target" position={Position.Left} />
       <span className="node-symbol table-symbol" aria-hidden="true">T</span>
       <span className="node-copy">
@@ -346,6 +405,7 @@ function makeGraph(result, selectedId) {
     : null
   const procedures = result.procedures || []
   const proceduresById = new Map(procedures.map((procedure) => [procedure.id, procedure]))
+  const captionsByTable = tableCaptions(result)
   const procedureNodeIds = new Set(
     result.procedure_nodes
       || [...procedures.map((procedure) => procedure.id), ...(result.edges || [])
@@ -355,6 +415,7 @@ function makeGraph(result, selectedId) {
   const nodes = []
 
   for (const procedure of procedures) {
+    const caption = procedureCaption(procedure)
     graph.setNode(procedure.id, { width: NODE_WIDTH, height: NODE_HEIGHT })
     nodes.push({
       id: procedure.id,
@@ -362,6 +423,7 @@ function makeGraph(result, selectedId) {
       position: { x: 0, y: 0 },
       data: {
         label: procedure.id.replace(/^dbo\./, ''),
+        caption,
         active: procedure.id === selectedId,
         dimmed: Boolean(reachable && !reachable.has(procedure.id)),
       },
@@ -377,6 +439,7 @@ function makeGraph(result, selectedId) {
       position: { x: 0, y: 0 },
       data: {
         label: procedureId.replace(/^dbo\./, ''),
+        caption: `Reads 0 tables, writes 0 tables.`,
         active: procedureId === selectedId,
         dimmed: Boolean(reachable && !reachable.has(procedureId)),
       },
@@ -385,6 +448,7 @@ function makeGraph(result, selectedId) {
 
   for (const table of result.tables || []) {
     const nodeId = `table:${table}`
+    const caption = captionsByTable.get(table) || ''
     graph.setNode(nodeId, { width: NODE_WIDTH, height: NODE_HEIGHT })
     nodes.push({
       id: nodeId,
@@ -392,6 +456,7 @@ function makeGraph(result, selectedId) {
       position: { x: 0, y: 0 },
       data: {
         label: table,
+        caption,
         active: selectedId === table,
         dimmed: Boolean(reachable && !reachable.has(table)),
       },
@@ -710,6 +775,11 @@ function App() {
     [result, selectedId],
   )
   const procedure = result?.procedures.find((item) => item.id === selectedId)
+  const selectedCaption = procedure
+    ? procedureCaption(procedure)
+    : result?.tables.includes(selectedId)
+      ? tableCaptions(result).get(selectedId)
+      : null
   const uncertainSelection = Boolean(
     selectedId && result?.edges.some((edge) => edge.confidence === 'uncertain' && edge.to === selectedId),
   )
@@ -836,7 +906,10 @@ function App() {
           </section>
 
           <div className="graph-toolbar">
-            <div className="graph-title"><span className="grid-icon" aria-hidden="true">▦</span><strong>Dependency map</strong><span className="toolbar-divider" /><span>{procedureCount + tableCount} objects</span></div>
+            <div className="graph-toolbar-main">
+              <div className="graph-title"><span className="grid-icon" aria-hidden="true">▦</span><strong>Dependency map</strong><span className="toolbar-divider" /><span>{procedureCount + tableCount} objects</span></div>
+              <span className="graph-instructions">Hover for purpose; click for details and downstream impact.</span>
+            </div>
             <div className="graph-toolbar-right">
               {verifiedSample && (
                 <span
@@ -902,6 +975,7 @@ function App() {
                 <div>
                   <span className="selection-kind">{procedure ? 'PROCEDURE' : uncertainSelection ? 'UNRESOLVED' : 'TABLE'}</span>
                   <h2>{selectedLabel?.replace(/^dbo\./, '')}</h2>
+                  {selectedCaption && <p className="object-caption">{selectedCaption}</p>}
                   {procedure && <span className="file-label">{procedure.file}</span>}
                 </div>
               </div>

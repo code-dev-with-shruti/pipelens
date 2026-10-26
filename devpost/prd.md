@@ -65,6 +65,8 @@ When the user clicks a procedure or table, the app highlights the downstream imp
 
 When a procedure is selected, the app presents an immediate summary and supporting detail.
 
+- Show a short purpose caption (the first sentence of its summary) on the graph node tooltip, below the selected procedure name, and in the Markdown export.
+- If a live uploaded-file summary is unavailable, use a deterministic reads/writes count caption instead.
 - Plain-English summary in a few sentences.
 - The summary leads with business purpose and explains why the procedure matters to the workflow, without claiming facts not supported by parsed data.
 - Ordered steps describing the procedure’s flow.
@@ -85,6 +87,13 @@ The app surfaces obvious risk patterns in the SQL flow.
 Each risk should show a severity and a description tied to the relevant procedure.
 
 Gemini writes only the plain-English summary and ordered steps from parser-derived relationships. Risk detection is deterministic code; the model never decides risks, graph edges, or downstream impact.
+
+### Table captions
+
+- Generate a table caption from graph edges without using an LLM.
+- List writing procedures and reading procedures; identify source tables with no writer and tables with no reader.
+- Show the caption as a graph tooltip, under the selected table name, and in an Object index table in the Markdown export.
+- For procedures with dynamic SQL, append a note that some dependencies are unknown.
 
 ### Export onboarding doc
 
